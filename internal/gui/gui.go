@@ -15,43 +15,68 @@ import (
 // StartGUI initializes and shows the Fyne application.
 func StartGUI() {
 	a := app.New()
-	w := a.NewWindow("Meowmail Debugger")
+	w := a.NewWindow("Meowmail - Professional Email Client")
 
-	w.Resize(fyne.NewSize(800, 600))
+	w.Resize(fyne.NewSize(1400, 900))
 
-	// Add migration wizard menu item
-	migrationMenu := fyne.NewMenuItem("Migration Wizard", func() {
-		ShowMigrationWizard(w)
-	})
-
-	accountsMenu := fyne.NewMenuItem("Manage Accounts", func() {
-		// TODO: Show accounts management dialog
-	})
-
-	helpMenu := fyne.NewMenu("Help",
-		fyne.NewMenuItem("About Meowmail", func() {
-			// Show about dialog
+	// Menu bar
+	fileMenu := fyne.NewMenu("File",
+		fyne.NewMenuItem("New Message", func() {
+			// TODO: Open new message window
 		}),
-		fyne.NewMenuItem("Documentation", func() {
-			// Open docs
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Settings", func() {
+			// TODO: Open settings dialog
+		}),
+		fyne.NewMenuItem("Quit", func() {
+			a.Quit()
+		}),
+	)
+
+	accountsMenu := fyne.NewMenu("Accounts",
+		fyne.NewMenuItem("Add Account", func() {
+			// TODO: Show add account dialog
+		}),
+		fyne.NewMenuItem("Manage Accounts", func() {
+			// TODO: Show accounts management dialog
 		}),
 	)
 
 	toolsMenu := fyne.NewMenu("Tools",
-		migrationMenu,
-		accountsMenu,
+		fyne.NewMenuItem("Migration Wizard", func() {
+			ShowMigrationWizard(w)
+		}),
+		fyne.NewMenuItem("Protocol Inspector", func() {
+			// Switch to protocol tab
+		}),
+		fyne.NewMenuItem("Security Checks", func() {
+			// Switch to security tab
+		}),
+		fyne.NewMenuItem("Rules Studio", func() {
+			// Switch to rules tab
+		}),
 	)
 
-	mainMenu := fyne.NewMainMenu(toolsMenu, helpMenu)
+	helpMenu := fyne.NewMenu("Help",
+		fyne.NewMenuItem("Documentation", func() {
+			// Open docs
+		}),
+		fyne.NewMenuItem("About Meowmail", func() {
+			// Show about dialog
+		}),
+	)
+
+	mainMenu := fyne.NewMainMenu(fileMenu, accountsMenu, toolsMenu, helpMenu)
 	w.SetMainMenu(mainMenu)
 
+	// Main content area with tabs
 	tabs := container.NewAppTabs(
-		container.NewTabItem("📥 Inbox & Folders", buildFoldersTab()),
-		container.NewTabItem("✏️ Composer", buildComposerTab()),
-		container.NewTabItem("📋 Rules Studio", buildRulesTab()),
-		container.NewTabItem("🔌 Raw Session", buildSessionTab()),
-		container.NewTabItem("🔬 Protocol Inspector", buildProtocolTab()),
-		container.NewTabItem("🔒 Security Checks", buildSecurityTab()),
+		container.NewTabItem("Mail", buildMailView(w)),
+		container.NewTabItem("Composer", buildComposerTab()),
+		container.NewTabItem("Rules", buildRulesTab()),
+		container.NewTabItem("Protocol Inspector", buildProtocolTab()),
+		container.NewTabItem("Security", buildSecurityTab()),
+		container.NewTabItem("Debug Session", buildSessionTab()),
 	)
 
 	tabs.SetTabLocation(container.TabLocationTop)

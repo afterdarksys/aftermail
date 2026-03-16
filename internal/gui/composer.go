@@ -7,43 +7,101 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
 func buildComposerTab() fyne.CanvasObject {
+	// Account selector with more professional styling
+	accountLabel := widget.NewLabel("From:")
+	accountSelect := widget.NewSelect(
+		[]string{
+			"work@company.com (Office 365)",
+			"personal@gmail.com (Gmail)",
+			"did:aftersmtp:msgs.global:ryan (AfterSMTP - Encrypted)",
+		},
+		nil,
+	)
+	accountSelect.SetSelected("work@company.com (Office 365)")
+
+	accountRow := container.NewBorder(nil, nil, accountLabel, nil, accountSelect)
+
+	// Recipients
 	toEntry := widget.NewEntry()
-	toEntry.SetPlaceHolder("To: (e.g., user@example.com or did:aftersmtp:msgs.global:user)")
+	toEntry.SetPlaceHolder("Recipients (separate multiple with commas)")
 
-	subjectEntry := widget.NewEntry()
-	subjectEntry.SetPlaceHolder("Subject:")
+	ccEntry := widget.NewEntry()
+	ccEntry.SetPlaceHolder("Cc")
 
-	bodyEntry := widget.NewMultiLineEntry()
-	bodyEntry.SetPlaceHolder("Type your message here...")
+	bccEntry := widget.NewEntry()
+	bccEntry.SetPlaceHolder("Bcc")
 
-	// Account selector
-	accountSelect := widget.NewSelect([]string{"IMAP (example@gmail.com)", "AfterSMTP (did:aftersmtp:msgs.global:ryan)", "Outlook (user@outlook.com)"}, nil)
-	accountSelect.SetSelected("IMAP (example@gmail.com)")
+	// Toggle for showing Cc/Bcc
+	showCcBcc := false
+	ccBccContainer := container.NewVBox()
 
-	// Format selector
-	formatRadio := widget.NewRadioGroup([]string{"Plain Text", "Rich Text (Markdown)", "Full HTML", "AfterSMTP AMF Native"}, func(selected string) {
-		switch selected {
-		case "AfterSMTP AMF Native":
-			bodyEntry.SetPlaceHolder("Compose your message in plain text or HTML.\nAfterSMTP will automatically encrypt and sign it with your DID keys.")
-		case "Full HTML":
-			bodyEntry.SetPlaceHolder("<html><body><h1>Your HTML content here</h1></body></html>")
-		case "Rich Text (Markdown)":
-			bodyEntry.SetPlaceHolder("# Heading\n**Bold** and *italic* text supported")
-		default:
-			bodyEntry.SetPlaceHolder("Type your message here...")
+	ccBccBtn := widget.NewButton("Cc/Bcc", func() {
+		showCcBcc = !showCcBcc
+		if showCcBcc {
+			ccBccContainer.Objects = []fyne.CanvasObject{ccEntry, bccEntry}
+		} else {
+			ccBccContainer.Objects = []fyne.CanvasObject{}
 		}
+		ccBccContainer.Refresh()
 	})
-	formatRadio.SetSelected("Plain Text")
-	formatRadio.Horizontal = true
 
-	// Attachments list (placeholder)
-	attachmentsLabel := widget.NewLabel("Attachments: None")
+	toRow := container.NewBorder(nil, nil, widget.NewLabel("To:"), ccBccBtn, toEntry)
 
-	sendBtn := widget.NewButton("Send Message", func() {
+	// Subject
+	subjectEntry := widget.NewEntry()
+	subjectEntry.SetPlaceHolder("Subject")
+	subjectRow := container.NewBorder(nil, nil, widget.NewLabel("Subject:"), nil, subjectEntry)
+
+	// Formatting toolbar
+	boldBtn := widget.NewButton("B", func() {})
+	boldBtn.Importance = widget.LowImportance
+
+	italicBtn := widget.NewButton("I", func() {})
+	italicBtn.Importance = widget.LowImportance
+
+	underlineBtn := widget.NewButton("U", func() {})
+	underlineBtn.Importance = widget.LowImportance
+
+	linkBtn := widget.NewButton("Link", func() {})
+	linkBtn.Importance = widget.LowImportance
+
+	formatSelect := widget.NewSelect([]string{"Plain Text", "HTML", "Markdown"}, func(s string) {})
+	formatSelect.SetSelected("Plain Text")
+
+	attachBtn := widget.NewButton("Attach Files", func() {
+		// TODO: File picker
+	})
+
+	formattingToolbar := container.NewHBox(
+		widget.NewLabel("Format:"),
+		formatSelect,
+		widget.NewSeparator(),
+		boldBtn,
+		italicBtn,
+		underlineBtn,
+		linkBtn,
+		layout.NewSpacer(),
+		attachBtn,
+	)
+
+	// Message body
+	bodyEntry := widget.NewMultiLineEntry()
+	bodyEntry.SetPlaceHolder("Compose your message...")
+	bodyEntry.Wrapping = fyne.TextWrapWord
+
+	// Attachments area
+	attachmentsList := widget.NewLabel("No attachments")
+
+	// Encryption/Security indicator
+	securityIndicator := widget.NewLabel("🔒 Standard TLS encryption")
+
+	// Action buttons
+	sendBtn := widget.NewButton("Send", func() {
 		to := strings.TrimSpace(toEntry.Text)
 		subject := strings.TrimSpace(subjectEntry.Text)
 		body := bodyEntry.Text
@@ -54,13 +112,13 @@ func buildComposerTab() fyne.CanvasObject {
 		}
 
 		// Determine if sending via AMF or traditional email
-		isAMP := strings.HasPrefix(to, "did:aftersmtp:") || formatRadio.Selected == "AfterSMTP AMF Native"
+		isAMP := strings.HasPrefix(to, "did:aftersmtp:")
 
 		var result string
 		if isAMP {
-			result = sendAMPMessage(to, subject, body, formatRadio.Selected)
+			result = sendAMPMessage(to, subject, body, formatSelect.Selected)
 		} else {
-			result = sendTraditionalMessage(to, subject, body, formatRadio.Selected, accountSelect.Selected)
+			result = sendTraditionalMessage(to, subject, body, formatSelect.Selected, accountSelect.Selected)
 		}
 
 		dialog.ShowInformation("Send Result", result, nil)
@@ -68,21 +126,63 @@ func buildComposerTab() fyne.CanvasObject {
 		// Clear form on success
 		if strings.Contains(result, "successfully") {
 			toEntry.SetText("")
+			ccEntry.SetText("")
+			bccEntry.SetText("")
 			subjectEntry.SetText("")
 			bodyEntry.SetText("")
 		}
 	})
+	sendBtn.Importance = widget.HighImportance
 
-	headerForm := container.NewVBox(
-		widget.NewLabelWithStyle("🐱 Meowmail Composer", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		container.NewHBox(widget.NewLabel("From:"), accountSelect),
-		toEntry,
-		subjectEntry,
-		container.NewHBox(widget.NewLabel("Format:"), formatRadio),
-		attachmentsLabel,
+	saveDraftBtn := widget.NewButton("Save Draft", func() {
+		// TODO: Save to drafts
+		dialog.ShowInformation("Draft Saved", "Your message has been saved to drafts", nil)
+	})
+
+	discardBtn := widget.NewButton("Discard", func() {
+		// TODO: Confirm and discard
+		toEntry.SetText("")
+		ccEntry.SetText("")
+		bccEntry.SetText("")
+		subjectEntry.SetText("")
+		bodyEntry.SetText("")
+	})
+	discardBtn.Importance = widget.LowImportance
+
+	actionBar := container.NewHBox(
+		sendBtn,
+		saveDraftBtn,
+		discardBtn,
+		layout.NewSpacer(),
+		securityIndicator,
 	)
 
-	return container.NewBorder(headerForm, sendBtn, nil, nil, bodyEntry)
+	// Header section
+	header := container.NewVBox(
+		widget.NewLabelWithStyle("New Message", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewSeparator(),
+		accountRow,
+		toRow,
+		ccBccContainer,
+		subjectRow,
+		widget.NewSeparator(),
+		formattingToolbar,
+		widget.NewSeparator(),
+	)
+
+	// Footer section
+	footer := container.NewVBox(
+		widget.NewSeparator(),
+		attachmentsList,
+		actionBar,
+	)
+
+	return container.NewBorder(
+		header,
+		footer,
+		nil, nil,
+		bodyEntry,
+	)
 }
 
 // sendAMPMessage sends a message via AfterSMTP AMF protocol
