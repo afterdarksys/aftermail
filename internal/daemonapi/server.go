@@ -3,10 +3,10 @@ package daemonapi
 import (
 	"encoding/json"
 	"net/http"
-	"github.com/ryan/meowmail/pkg/storage"
+	"github.com/afterdarksys/aftermail/pkg/storage"
 )
 
-// Server handles local client requests to the meowmaild daemon cache
+// Server handles local client requests to the aftermaild daemon cache
 type Server struct {
 	db *storage.DB
 }

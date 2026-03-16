@@ -43,7 +43,7 @@ func RunGrammarTestSuite(config GrammarTestConfig) []TestResult {
 	defer client.Quit()
 
 	// Test 2: Standard EHLO
-	err = client.Hello("meowmail.test")
+	err = client.Hello("aftermail.test")
 	if err != nil {
 		results = append(results, TestResult{Name: "EHLO Compliance", Passed: false, Message: err.Error()})
 	} else {

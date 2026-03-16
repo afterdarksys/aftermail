@@ -7,8 +7,9 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/ryan/meowmail/pkg/accounts"
-	ampProto "github.com/ryan/meowmail/pkg/proto"
+	"github.com/afterdarksys/aftermail/pkg/accounts"
+	ampProto "github.com/afterdarksys/aftermail/pkg/proto"
+	"github.com/afterdarksys/aftermail/pkg/security"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -59,6 +60,75 @@ func (v *AMFMessageViewer) buildContent() {
 	headerLabel := widget.NewLabel(headerText)
 	headerLabel.Wrapping = fyne.TextWrapWord
 
+	// Security section
+	securityLabel := widget.NewLabel("Security Status: Not Scanned")
+	analyzeBtn := widget.NewButton("Scan Message", func() {
+		securityLabel.SetText("Security Status: Scanning...")
+		go func() {
+			spamClient := security.NewBetterSpamClient()
+			phishClient := security.NewBetterPhishClient()
+			
+			var contentStr string
+			if isAMF && len(v.message.AMFPayload) > 0 {
+				var amfPayload ampProto.AMFPayload
+				if err := proto.Unmarshal(v.message.AMFPayload, &amfPayload); err == nil {
+					contentStr = amfPayload.TextBody
+				}
+			} else {
+				contentStr = v.message.BodyPlain
+			}
+			
+			spamResult, err1 := spamClient.CheckMail(contentStr)
+			phishResult, err2 := phishClient.Validate("https://"+v.message.Sender, contentStr, v.message.Subject)
+
+			statusText := "Security Status: "
+			if err1 == nil && spamResult != nil {
+				statusText += fmt.Sprintf("Spam Score: %.2f ", spamResult.Score)
+				if spamResult.IsSpam {
+					statusText += "(SPAM) "
+				}
+			}
+			if err2 == nil && phishResult != nil {
+				if phishResult.IsPhishing {
+					statusText += fmt.Sprintf("| ⚠️ PHISHING RISK (%.0f%%) ", phishResult.Confidence*100)
+				} else {
+					statusText += "| Clean "
+				}
+			}
+			if err1 != nil {
+				statusText += fmt.Sprintf("| Spam error: %v ", err1)
+			}
+			if err2 != nil {
+				statusText += fmt.Sprintf("| Phish error: %v ", err2)
+			}
+
+			securityLabel.SetText(statusText)
+		}()
+	})
+	
+	reportBtn := widget.NewButton("Report Phishing", func() {
+		go func() {
+			phishClient := security.NewBetterPhishClient()
+			var contentStr string
+			if isAMF && len(v.message.AMFPayload) > 0 {
+				var amfPayload ampProto.AMFPayload
+				if err := proto.Unmarshal(v.message.AMFPayload, &amfPayload); err == nil {
+					contentStr = amfPayload.TextBody
+				}
+			} else {
+				contentStr = v.message.BodyPlain
+			}
+			err := phishClient.ReportPhishing("https://"+v.message.Sender, contentStr)
+			if err == nil {
+				securityLabel.SetText("Security Status: Reported as Phishing")
+			} else {
+				securityLabel.SetText(fmt.Sprintf("Security Status: Report failed: %v", err))
+			}
+		}()
+	})
+
+	securityBox := container.NewHBox(securityLabel, analyzeBtn, reportBtn)
+
 	// Body section
 	var bodyContent *widget.RichText
 	if isAMF && len(v.message.AMFPayload) > 0 {
@@ -84,6 +154,8 @@ func (v *AMFMessageViewer) buildContent() {
 	sections := []fyne.CanvasObject{
 		widget.NewSeparator(),
 		headerLabel,
+		widget.NewSeparator(),
+		securityBox,
 		widget.NewSeparator(),
 		container.NewScroll(bodyContent),
 	}

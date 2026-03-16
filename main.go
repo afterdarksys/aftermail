@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/ryan/meowmail/cmd"
+	"github.com/afterdarksys/aftermail/cmd"
 )
 
 func main() {

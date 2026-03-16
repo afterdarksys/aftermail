@@ -5,14 +5,14 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/ryan/meowmail/internal/gui"
+	"github.com/afterdarksys/aftermail/internal/gui"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "meowmail",
-	Short: "Meowmail: The making e-mail purr again protocol debugger.",
-	Long: `Meowmail is a comprehensive e-mail protocol testing, 
-interactive debugging, and security verification tool. 
+	Use:   "aftermail",
+	Short: "AfterMail: Next-generation email platform",
+	Long: `AfterMail is a comprehensive email protocol testing,
+interactive debugging, and security verification tool.
 Supports SMTP, POP3, IMAP, DKIM, DMARC, SPF verification, and more.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// If no arguments/flags are provided (default run), launch Fyne GUI.

@@ -1,4 +1,4 @@
-# Meowmail TODO List
+# ADS Mail (codename: meowmail) TODO List
 
 ## High Priority (v1.1)
 
@@ -192,7 +192,7 @@
 - [ ] Set up community forum
 - [ ] Create Discord/Slack channel
 - [ ] Write blog posts about Web3 email
-- [ ] Create comparison charts (Meowmail vs traditional)
+- [ ] Create comparison charts (ADS Mail vs traditional)
 - [ ] Develop marketing materials
 - [ ] Create demo videos
 - [ ] Submit to product directories

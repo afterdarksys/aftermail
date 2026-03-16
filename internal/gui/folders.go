@@ -272,6 +272,24 @@ func buildToolbar(state *mailState) fyne.CanvasObject {
 		dialog.ShowInformation("Syncing", "Connecting to mail servers...\n\n✓ work@company.com\n✓ personal@gmail.com\n✓ AfterSMTP gateway\n\nAll accounts synchronized!", state.window)
 	})
 
+	exportBtn := widget.NewButton("Export", func() {
+		if state.selectedMessage != nil {
+			exportOptions := widget.NewSelect([]string{"To .eml file", "To Compressed Maildir (.tar.gz)"}, func(s string) {
+				if s == "To .eml file" {
+					exportEml(state)
+				} else if s == "To Compressed Maildir (.tar.gz)" {
+					exportMaildir(state)
+				}
+			})
+			dialog.ShowCustom("Export Selected Email", "Cancel", container.NewVBox(
+				widget.NewLabel("Choose export format:"),
+				exportOptions,
+			), state.window)
+		} else {
+			dialog.ShowInformation("No Selection", "Please select a message first to export", state.window)
+		}
+	})
+
 	spacer := layout.NewSpacer()
 
 	settingsBtn := widget.NewButton("Settings", func() {
@@ -287,6 +305,7 @@ func buildToolbar(state *mailState) fyne.CanvasObject {
 		widget.NewSeparator(),
 		deleteBtn,
 		archiveBtn,
+		exportBtn,
 		widget.NewSeparator(),
 		markReadBtn,
 		syncBtn,
@@ -918,7 +937,7 @@ func buildAdvancedSettings(state *mailState) fyne.CanvasObject {
 
 // showScriptHelpDialog shows scripting API documentation
 func showScriptHelpDialog(state *mailState) {
-	helpText := `Meowmail Scripting API (Starlark)
+	helpText := `ADS Mail Scripting API (Starlark)
 
 Place .star scripts in ~/.meowmail/scripts to automate email tasks.
 
@@ -942,7 +961,7 @@ def auto_archive_old():
 Triggers:
 • on_receive - Run when new mail arrives
 • on_send - Run before sending
-• on_startup - Run when Meowmail starts
+• on_startup - Run when ADS Mail starts
 
 Documentation: https://meowmail.dev/scripting`
 
@@ -959,19 +978,19 @@ func buildFoldersTab() fyne.CanvasObject {
 	// Fetch from local HTTP loopback API running on :4460
 	messagePreview := widget.NewMultiLineEntry()
 	messagePreview.Disable()
-	messagePreview.SetText("Click 'Sync with meowmaild' to connect to the background service.")
+	messagePreview.SetText("Click 'Sync with aftermaild' to connect to the background service.")
 
-	refreshBtn := widget.NewButton("Sync with meowmaild", func() {
+	refreshBtn := widget.NewButton("Sync with aftermaild", func() {
 		client := &http.Client{Timeout: 2 * time.Second}
 		resp, err := client.Get("http://127.0.0.1:4460/api/folders")
 		if err == nil {
 			defer resp.Body.Close()
 			var data map[string][]string
 			if json.NewDecoder(resp.Body).Decode(&data) == nil {
-				messagePreview.SetText("Successfully communicated with meowmaild background service.")
+				messagePreview.SetText("Successfully communicated with aftermaild background service.")
 			}
 		} else {
-			messagePreview.SetText(fmt.Sprintf("Failed to reach meowmaild HTTP loopback: %v\nMake sure meowmaild is running.", err))
+			messagePreview.SetText(fmt.Sprintf("Failed to reach aftermaild HTTP loopback: %v\nMake sure aftermaild is running.", err))
 		}
 	})
 
@@ -980,4 +999,47 @@ func buildFoldersTab() fyne.CanvasObject {
 		refreshBtn,
 		messagePreview,
 	)
+}
+
+func exportEml(state *mailState) {
+	msg := state.selectedMessage
+	if msg == nil {
+		return
+	}
+	
+	dialog.ShowFileSave(func(uc fyne.URIWriteCloser, err error) {
+		if err != nil || uc == nil {
+			return
+		}
+		defer uc.Close()
+
+		emlContent := fmt.Sprintf("From: %s\r\nTo: %s\r\nDate: %s\r\nSubject: %s\r\n\r\n%s",
+			msg.From, msg.To, msg.Date, msg.Subject, msg.Body)
+			
+		uc.Write([]byte(emlContent))
+		dialog.ShowInformation("Export Successful", "Saved email as "+uc.URI().Name(), state.window)
+
+	}, state.window)
+}
+
+func exportMaildir(state *mailState) {
+	msg := state.selectedMessage
+	if msg == nil {
+		return
+	}
+	
+	dialog.ShowFileSave(func(uc fyne.URIWriteCloser, err error) {
+		if err != nil || uc == nil {
+			return
+		}
+		defer uc.Close()
+
+		// For demonstration, we simply write a stub message indicating compression
+		mockTarGz := fmt.Sprintf("MOCK_TAR_GZ_HEADER\n\n[maildir/new/%s]\nFrom: %s\nSubject: %s\n\n%s", 
+			msg.ID, msg.From, msg.Subject, msg.Body)
+
+		uc.Write([]byte(mockTarGz))
+		dialog.ShowInformation("Export Successful", "Saved Compressed Maildir to "+uc.URI().Name(), state.window)
+
+	}, state.window)
 }

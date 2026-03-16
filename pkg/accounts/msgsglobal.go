@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	// Import protobuf definitions
-	"github.com/ryan/meowmail/pkg/proto"
+	"github.com/afterdarksys/aftermail/pkg/proto"
 	protobuf "google.golang.org/protobuf/proto"
 )
 

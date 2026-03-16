@@ -9,13 +9,13 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/ryan/meowmail/pkg/tlsconn"
+	"github.com/afterdarksys/aftermail/pkg/tlsconn"
 )
 
 // StartGUI initializes and shows the Fyne application.
 func StartGUI() {
 	a := app.New()
-	w := a.NewWindow("Meowmail - Professional Email Client")
+	w := a.NewWindow("ADS Mail - Professional Email Client")
 
 	w.Resize(fyne.NewSize(1400, 900))
 
@@ -26,7 +26,7 @@ func StartGUI() {
 		}),
 		fyne.NewMenuItemSeparator(),
 		fyne.NewMenuItem("Settings", func() {
-			// TODO: Open settings dialog
+			openSettingsDialog(a)
 		}),
 		fyne.NewMenuItem("Quit", func() {
 			a.Quit()
@@ -61,7 +61,7 @@ func StartGUI() {
 		fyne.NewMenuItem("Documentation", func() {
 			// Open docs
 		}),
-		fyne.NewMenuItem("About Meowmail", func() {
+		fyne.NewMenuItem("About ADS Mail", func() {
 			// Show about dialog
 		}),
 	)
@@ -73,6 +73,11 @@ func StartGUI() {
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Mail", buildMailView(w)),
 		container.NewTabItem("Composer", buildComposerTab()),
+		container.NewTabItem("Contacts", buildContactsTab()),
+		container.NewTabItem("Calendar", buildCalendarTab(w)),
+		container.NewTabItem("Reminders", buildRemindersTab()),
+		container.NewTabItem("Tasks", buildTasksTab()),
+		container.NewTabItem("AfterSMTP/Web3", buildWeb3Tab(w)),
 		container.NewTabItem("Rules", buildRulesTab()),
 		container.NewTabItem("Protocol Inspector", buildProtocolTab()),
 		container.NewTabItem("Security", buildSecurityTab()),

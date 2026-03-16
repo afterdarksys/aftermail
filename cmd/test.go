@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ryan/meowmail/pkg/imap"
-	"github.com/ryan/meowmail/pkg/pop3"
-	"github.com/ryan/meowmail/pkg/smtp"
+	"github.com/afterdarksys/aftermail/pkg/imap"
+	"github.com/afterdarksys/aftermail/pkg/pop3"
+	"github.com/afterdarksys/aftermail/pkg/smtp"
 	"github.com/spf13/cobra"
 )
 

@@ -8,7 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	ampProto "github.com/ryan/meowmail/pkg/proto"
+	ampProto "github.com/afterdarksys/aftermail/pkg/proto"
 	"google.golang.org/protobuf/proto"
 )
 

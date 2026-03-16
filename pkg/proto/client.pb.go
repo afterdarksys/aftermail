@@ -440,7 +440,7 @@ const file_client_proto_rawDesc = "" +
 	"\x0fDispatchMessage\x12\x0f.amp.AMPMessage\x1a\x15.amp.DeliveryResponse\x125\n" +
 	"\n" +
 	"FetchInbox\x12\x14.client.InboxRequest\x1a\x0f.amp.AMPMessage0\x01\x12E\n" +
-	"\x10RegisterIdentity\x12\x17.client.IdentityRequest\x1a\x18.client.IdentityResponseB$Z\"github.com/ryan/meowmail/pkg/protob\x06proto3"
+	"\x10RegisterIdentity\x12\x17.client.IdentityRequest\x1a\x18.client.IdentityResponseB-Z+github.com/afterdarksys/aftermail/pkg/protob\x06proto3"
 
 var (
 	file_client_proto_rawDescOnce sync.Once

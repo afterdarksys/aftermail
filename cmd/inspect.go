@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/ryan/meowmail/pkg/security"
+	"github.com/afterdarksys/aftermail/pkg/security"
 	"github.com/spf13/cobra"
 )
 

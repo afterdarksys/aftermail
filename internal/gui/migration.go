@@ -8,7 +8,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
-	"github.com/ryan/meowmail/pkg/accounts"
+	"github.com/afterdarksys/aftermail/pkg/accounts"
 )
 
 // MigrationWizard helps users migrate from traditional email to AfterSMTP/Mailblocks

@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ryan/meowmail/pkg/tlsconn"
+	"github.com/afterdarksys/aftermail/pkg/tlsconn"
 	"github.com/spf13/cobra"
 )
 

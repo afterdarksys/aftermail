@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package client;
 
-option go_package = "github.com/ryan/meowmail/pkg/proto";
+option go_package = "github.com/afterdarksys/aftermail/pkg/proto";
 
 import "amp.proto";
 

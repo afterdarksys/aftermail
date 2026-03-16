@@ -10,15 +10,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ryan/meowmail/internal/daemonapi"
-	"github.com/ryan/meowmail/pkg/storage"
+	"github.com/afterdarksys/aftermail/internal/daemonapi"
+	"github.com/afterdarksys/aftermail/pkg/rules"
+	"github.com/afterdarksys/aftermail/pkg/storage"
 )
 
 func main() {
-	log.Println("Starting meowmaild - Background Mail Sync Service")
+	log.Println("Starting aftermaild - Background Mail Sync Service")
 
 	// Setup local database
-	db, err := storage.InitDB("file:meowmaild.db?cache=shared&mode=rwc")
+	db, err := storage.InitDB("file:aftermaild.db?cache=shared&mode=rwc")
 	if err != nil {
 		log.Fatalf("Failed to init database: %v", err)
 	}
@@ -46,7 +47,17 @@ func main() {
 	}()
 
 	// TODO: Initialize SQLite Database
-	// TODO: Initialize Starlark Rule Engine
+	// Initialize Starlark Rule Engine
+	log.Println("[Rules] Initializing MailScript (Starlark) Engine...")
+	// We load a mock rule to ensure the engine boots up successfully
+	testRule := "def evaluate():\n    accept()\n"
+	err = rules.ExecuteEngine(testRule, &rules.MessageContext{Headers: map[string]string{}})
+	if err != nil {
+		log.Printf("[Rules] Failed to boot engine: %v\n", err)
+	} else {
+		log.Println("[Rules] MailScript Engine loaded successfully.")
+	}
+
 	// TODO: Start Account Poller routines (IMAP, POP3, AMP)
 
 	// Wait for interrupt
@@ -54,7 +65,7 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
-	log.Println("Shutting down meowmaild...")
+	log.Println("Shutting down aftermaild...")
 	
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

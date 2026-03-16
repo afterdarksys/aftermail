@@ -426,7 +426,7 @@ const file_amp_proto_rawDesc = "" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12!\n" +
 	"\freceipt_hash\x18\x03 \x01(\tR\vreceiptHash2E\n" +
 	"\tAMPServer\x128\n" +
-	"\x0eDeliverMessage\x12\x0f.amp.AMPMessage\x1a\x15.amp.DeliveryResponseB$Z\"github.com/ryan/meowmail/pkg/protob\x06proto3"
+	"\x0eDeliverMessage\x12\x0f.amp.AMPMessage\x1a\x15.amp.DeliveryResponseB-Z+github.com/afterdarksys/aftermail/pkg/protob\x06proto3"
 
 var (
 	file_amp_proto_rawDescOnce sync.Once

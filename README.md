@@ -1,14 +1,14 @@
-# 🐱 Meowmail
+# 📧 AfterMail
 
-**Making Email Purr Again** - The next-generation email client supporting traditional protocols AND cutting-edge Web3/blockchain-backed messaging.
+**Next-Generation Email Platform** - Supporting traditional protocols AND cutting-edge Web3/blockchain-backed messaging.
 
-## What is Meowmail?
+## What is AfterMail?
 
-Meowmail is a comprehensive email platform that bridges traditional email (IMAP, Gmail, Outlook) with next-generation protocols (AfterSMTP, Mailblocks). It's both a protocol debugging tool AND a full-featured email client with first-class support for encrypted, blockchain-verified messaging.
+AfterMail is a comprehensive email platform that bridges traditional email (IMAP, Gmail, Outlook) with next-generation protocols (AfterSMTP, Mailblocks). It's both a protocol debugging tool AND a full-featured email client with first-class support for encrypted, blockchain-verified messaging.
 
 ### The Strategy
 
-Most Web3 projects fail because they require users to abandon existing systems. Meowmail takes a different approach:
+Most Web3 projects fail because they require users to abandon existing systems. AfterMail takes a different approach:
 
 1. **Download for traditional email** - Works perfectly with Gmail, Outlook, any IMAP server
 2. **Discover advanced features** - Built-in migration wizard, protocol testing, security verification
@@ -93,7 +93,7 @@ Benefits of AMF over MIME:
 
 ### Account Types
 
-Meowmail supports 7 account types:
+AfterMail supports 7 account types:
 
 | Type | Protocol | Authentication | Use Case |
 |------|----------|----------------|----------|
@@ -109,22 +109,22 @@ Meowmail supports 7 account types:
 
 ```bash
 # Clone the repository
-git clone https://github.com/ryan/meowmail
-cd meowmail
+git clone https://github.com/afterdarksys/aftermail
+cd aftermail
 
 # Install dependencies
 go mod tidy
 
 # Build
-go build -o meowmail
+go build -o aftermail
 
 # Run GUI
-./meowmail
+./aftermail
 
 # Or use CLI commands
-./meowmail test smtp --host mail.example.com --port 25
-./meowmail verify example.com
-./meowmail amp send --target did:aftersmtp:msgs.global:alice --payload "Hello!"
+./aftermail test smtp --host mail.example.com --port 25
+./aftermail verify example.com
+./aftermail amp send --target did:aftersmtp:msgs.global:alice --payload "Hello!"
 ```
 
 ## Configuration
@@ -133,14 +133,14 @@ go build -o meowmail
 
 1. Go to Google Cloud Console
 2. Create OAuth2 credentials
-3. Add to Meowmail: Tools → Manage Accounts → Add Gmail Account
+3. Add to AfterMail: Tools → Manage Accounts → Add Gmail Account
 4. Authenticate via OAuth
 
 ### Setting up AfterSMTP
 
 1. Get a DID identity:
    - Use Migration Wizard (Tools → Migration Wizard)
-   - Or CLI: `./meowmail register --username yourname`
+   - Or CLI: `./aftermail register --username yourname`
 
 2. Keys are automatically generated:
    - Ed25519 signing key
@@ -160,7 +160,7 @@ go build -o meowmail
 
 ```bash
 # Via CLI
-./meowmail send --to user@example.com --subject "Hello" --body "Test message"
+./aftermail send --to user@example.com --subject "Hello" --body "Test message"
 
 # Via GUI
 Composer → Select IMAP account → Write message → Send
@@ -170,7 +170,7 @@ Composer → Select IMAP account → Write message → Send
 
 ```bash
 # Via CLI
-./meowmail amp send \
+./aftermail amp send \
   --did did:aftersmtp:msgs.global:ryan \
   --target did:aftersmtp:msgs.global:alice \
   --payload "Encrypted message"
@@ -213,7 +213,7 @@ Composer → Select AfterSMTP account → Enter DID → Write message → Send
 ### Project Structure
 
 ```
-meowmail/
+aftermail/
 ├── cmd/                    # CLI commands
 │   ├── root.go            # Main command
 │   ├── test.go            # Protocol testing
@@ -253,12 +253,12 @@ go version
 go mod download
 
 # Build for your platform
-go build -o meowmail
+go build -o aftermail
 
 # Build for all platforms
-GOOS=windows GOARCH=amd64 go build -o meowmail.exe
-GOOS=darwin GOARCH=amd64 go build -o meowmail-mac
-GOOS=linux GOARCH=amd64 go build -o meowmail-linux
+GOOS=windows GOARCH=amd64 go build -o aftermail.exe
+GOOS=darwin GOARCH=amd64 go build -o aftermail-mac
+GOOS=linux GOARCH=amd64 go build -o aftermail-linux
 ```
 
 ## Roadmap
@@ -302,7 +302,7 @@ We welcome contributions! This project bridges traditional email and Web3 - oppo
 
 ### Responsible Disclosure
 
-Report security vulnerabilities to: security@meowmail.dev
+Report security vulnerabilities to: security@aftermail.dev
 
 ### Cryptography
 
@@ -334,9 +334,6 @@ Built with:
 
 ---
 
-**Making email purr again** 🐱📧
+**Next-Generation Email Platform** 📧
 
-For support, visit: https://meowmail.dev
-```
-
-This README gives users and developers a complete picture of what Meowmail is and why it matters - it's not just another email client, it's the real-world product that makes AfterSMTP and Mailblocks actually useful!
+For support, visit: https://aftermail.dev

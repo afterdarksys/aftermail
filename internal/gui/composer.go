@@ -77,6 +77,68 @@ func buildComposerTab() fyne.CanvasObject {
 		// TODO: File picker
 	})
 
+	// AI Toolbar
+	spellCheckBtn := widget.NewButton("✓ Spell Check", func() {
+		if bodyEntry.Text == "" {
+			dialog.ShowInformation("Spell Check", "No text to check", nil)
+			return
+		}
+		// TODO: Implement spell check with AI
+		dialog.ShowInformation("Spell Check", "Checking spelling...\n\n⚠️ Configure AI API key in Settings → AI Assistant", nil)
+	})
+	spellCheckBtn.Importance = widget.LowImportance
+
+	grammarCheckBtn := widget.NewButton("✓ Grammar", func() {
+		if bodyEntry.Text == "" {
+			dialog.ShowInformation("Grammar Check", "No text to check", nil)
+			return
+		}
+		// TODO: Implement grammar check with AI
+		dialog.ShowInformation("Grammar Check", "Checking grammar...\n\n⚠️ Configure AI API key in Settings → AI Assistant", nil)
+	})
+	grammarCheckBtn.Importance = widget.LowImportance
+
+	aiBtn := widget.NewButton("🤖 AI Assistant", func() {
+		if bodyEntry.Text == "" {
+			dialog.ShowInformation("AI Assistant", "Select text to improve or write a draft description", nil)
+			return
+		}
+
+		// Show AI menu
+		aiMenu := widget.NewPopUpMenu(fyne.NewMenu("",
+			fyne.NewMenuItem("Improve Writing", func() {
+				dialog.ShowInformation("AI", "Improving writing...\n\n⚠️ Configure AI API key in Settings", nil)
+			}),
+			fyne.NewMenuItem("Make Concise", func() {
+				dialog.ShowInformation("AI", "Making concise...\n\n⚠️ Configure AI API key in Settings", nil)
+			}),
+			fyne.NewMenuItem("Make Formal", func() {
+				dialog.ShowInformation("AI", "Making formal...\n\n⚠️ Configure AI API key in Settings", nil)
+			}),
+			fyne.NewMenuItem("Make Friendly", func() {
+				dialog.ShowInformation("AI", "Making friendly...\n\n⚠️ Configure AI API key in Settings", nil)
+			}),
+			fyne.NewMenuItemSeparator(),
+			fyne.NewMenuItem("Generate Draft", func() {
+				promptEntry := widget.NewMultiLineEntry()
+				promptEntry.SetPlaceHolder("Describe the email you want to write...")
+
+				dialog.ShowForm("Generate Draft", "Generate", "Cancel", []*widget.FormItem{
+					widget.NewFormItem("Description", promptEntry),
+				}, func(confirmed bool) {
+					if confirmed && promptEntry.Text != "" {
+						dialog.ShowInformation("Generating", "Generating draft...\n\n⚠️ Configure AI API key in Settings", nil)
+					}
+				}, nil)
+			}),
+			fyne.NewMenuItem("Summarize", func() {
+				dialog.ShowInformation("AI", "Summarizing...\n\n⚠️ Configure AI API key in Settings", nil)
+			}),
+		), fyne.CurrentApp().Driver().CanvasForObject(aiBtn))
+		aiMenu.ShowAtPosition(fyne.NewPos(100, 100))
+	})
+	aiBtn.Importance = widget.MediumImportance
+
 	formattingToolbar := container.NewHBox(
 		widget.NewLabel("Format:"),
 		formatSelect,
@@ -85,6 +147,10 @@ func buildComposerTab() fyne.CanvasObject {
 		italicBtn,
 		underlineBtn,
 		linkBtn,
+		widget.NewSeparator(),
+		spellCheckBtn,
+		grammarCheckBtn,
+		aiBtn,
 		layout.NewSpacer(),
 		attachBtn,
 	)

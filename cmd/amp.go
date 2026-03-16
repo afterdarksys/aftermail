@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ryan/meowmail/pkg/amp"
+	"github.com/afterdarksys/aftermail/pkg/amp"
 	"github.com/spf13/cobra"
 )
 

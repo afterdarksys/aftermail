@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ryan/meowmail/pkg/web3mail"
+	"github.com/afterdarksys/aftermail/pkg/web3mail"
 	"github.com/spf13/cobra"
 )
 
