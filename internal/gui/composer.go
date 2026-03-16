@@ -1,15 +1,49 @@
 package gui
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	"github.com/afterdarksys/aftermail/pkg/accounts"
+	"github.com/afterdarksys/aftermail/pkg/ai"
+	"github.com/afterdarksys/aftermail/pkg/send"
 )
+
+var (
+	// Global AI assistant instance (configured from settings)
+	aiAssistant *ai.Assistant
+	// Global undo send manager
+	undoManager *send.UndoSendManager
+)
+
+func init() {
+	// Initialize undo send manager with 10 second default delay
+	undoManager = send.NewUndoSendManager(10 * time.Second)
+}
+
+// getAIAssistant returns the AI assistant, creating it if necessary
+func getAIAssistant() *ai.Assistant {
+	if aiAssistant == nil {
+		// Try to create with default settings
+		// In production, these would come from user settings
+		aiAssistant, _ = ai.NewAssistant("anthropic", "", "claude-sonnet-4-20250514")
+	}
+	return aiAssistant
+}
+
+// SetAICredentials updates the AI assistant with new credentials
+func SetAICredentials(provider, apiKey, model string) error {
+	var err error
+	aiAssistant, err = ai.NewAssistant(provider, apiKey, model)
+	return err
+}
 
 func buildComposerTab() fyne.CanvasObject {
 	// Account selector with more professional styling
@@ -83,8 +117,40 @@ func buildComposerTab() fyne.CanvasObject {
 			dialog.ShowInformation("Spell Check", "No text to check", nil)
 			return
 		}
-		// TODO: Implement spell check with AI
-		dialog.ShowInformation("Spell Check", "Checking spelling...\n\n⚠️ Configure AI API key in Settings → AI Assistant", nil)
+
+		assistant := getAIAssistant()
+		if assistant == nil {
+			dialog.ShowInformation("Spell Check", "⚠️ Configure AI API key in Settings → AI Assistant", nil)
+			return
+		}
+
+		// Show progress dialog
+		progressDialog := dialog.NewInformation("Spell Check", "Checking spelling...", nil)
+		progressDialog.Show()
+
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			corrected, err := assistant.CheckSpelling(ctx, bodyEntry.Text)
+			progressDialog.Hide()
+
+			if err != nil {
+				dialog.ShowError(fmt.Errorf("spell check failed: %w", err), nil)
+				return
+			}
+
+			if corrected == bodyEntry.Text {
+				dialog.ShowInformation("Spell Check", "✓ No spelling errors found!", nil)
+			} else {
+				dialog.ShowConfirm("Spell Check", "Suggested corrections found. Apply changes?",
+					func(apply bool) {
+						if apply {
+							bodyEntry.SetText(corrected)
+						}
+					}, nil)
+			}
+		}()
 	})
 	spellCheckBtn.Importance = widget.LowImportance
 
@@ -93,30 +159,152 @@ func buildComposerTab() fyne.CanvasObject {
 			dialog.ShowInformation("Grammar Check", "No text to check", nil)
 			return
 		}
-		// TODO: Implement grammar check with AI
-		dialog.ShowInformation("Grammar Check", "Checking grammar...\n\n⚠️ Configure AI API key in Settings → AI Assistant", nil)
+
+		assistant := getAIAssistant()
+		if assistant == nil {
+			dialog.ShowInformation("Grammar Check", "⚠️ Configure AI API key in Settings → AI Assistant", nil)
+			return
+		}
+
+		// Show progress dialog
+		progressDialog := dialog.NewInformation("Grammar Check", "Checking grammar...", nil)
+		progressDialog.Show()
+
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			corrected, err := assistant.CheckGrammar(ctx, bodyEntry.Text)
+			progressDialog.Hide()
+
+			if err != nil {
+				dialog.ShowError(fmt.Errorf("grammar check failed: %w", err), nil)
+				return
+			}
+
+			if corrected == bodyEntry.Text {
+				dialog.ShowInformation("Grammar Check", "✓ No grammar errors found!", nil)
+			} else {
+				dialog.ShowConfirm("Grammar Check", "Suggested corrections found. Apply changes?",
+					func(apply bool) {
+						if apply {
+							bodyEntry.SetText(corrected)
+						}
+					}, nil)
+			}
+		}()
 	})
 	grammarCheckBtn.Importance = widget.LowImportance
 
 	aiBtn := widget.NewButton("🤖 AI Assistant", func() {
+		assistant := getAIAssistant()
+		if assistant == nil {
+			dialog.ShowInformation("AI Assistant", "⚠️ Configure AI API key in Settings → AI Assistant", nil)
+			return
+		}
+
 		if bodyEntry.Text == "" {
-			dialog.ShowInformation("AI Assistant", "Select text to improve or write a draft description", nil)
+			dialog.ShowInformation("AI Assistant", "Write some text first or generate a draft", nil)
 			return
 		}
 
 		// Show AI menu
 		aiMenu := widget.NewPopUpMenu(fyne.NewMenu("",
 			fyne.NewMenuItem("Improve Writing", func() {
-				dialog.ShowInformation("AI", "Improving writing...\n\n⚠️ Configure AI API key in Settings", nil)
+				progressDialog := dialog.NewInformation("AI Assistant", "Improving writing...", nil)
+				progressDialog.Show()
+
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+					defer cancel()
+
+					improved, err := assistant.ImproveWriting(ctx, bodyEntry.Text)
+					progressDialog.Hide()
+
+					if err != nil {
+						dialog.ShowError(fmt.Errorf("failed to improve writing: %w", err), nil)
+						return
+					}
+
+					dialog.ShowConfirm("AI Assistant", "Apply improved version?",
+						func(apply bool) {
+							if apply {
+								bodyEntry.SetText(improved)
+							}
+						}, nil)
+				}()
 			}),
 			fyne.NewMenuItem("Make Concise", func() {
-				dialog.ShowInformation("AI", "Making concise...\n\n⚠️ Configure AI API key in Settings", nil)
+				progressDialog := dialog.NewInformation("AI Assistant", "Making concise...", nil)
+				progressDialog.Show()
+
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+					defer cancel()
+
+					concise, err := assistant.MakeConcise(ctx, bodyEntry.Text)
+					progressDialog.Hide()
+
+					if err != nil {
+						dialog.ShowError(fmt.Errorf("failed to make concise: %w", err), nil)
+						return
+					}
+
+					dialog.ShowConfirm("AI Assistant", "Apply concise version?",
+						func(apply bool) {
+							if apply {
+								bodyEntry.SetText(concise)
+							}
+						}, nil)
+				}()
 			}),
 			fyne.NewMenuItem("Make Formal", func() {
-				dialog.ShowInformation("AI", "Making formal...\n\n⚠️ Configure AI API key in Settings", nil)
+				progressDialog := dialog.NewInformation("AI Assistant", "Making formal...", nil)
+				progressDialog.Show()
+
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+					defer cancel()
+
+					formal, err := assistant.MakeFormal(ctx, bodyEntry.Text)
+					progressDialog.Hide()
+
+					if err != nil {
+						dialog.ShowError(fmt.Errorf("failed to make formal: %w", err), nil)
+						return
+					}
+
+					dialog.ShowConfirm("AI Assistant", "Apply formal version?",
+						func(apply bool) {
+							if apply {
+								bodyEntry.SetText(formal)
+							}
+						}, nil)
+				}()
 			}),
 			fyne.NewMenuItem("Make Friendly", func() {
-				dialog.ShowInformation("AI", "Making friendly...\n\n⚠️ Configure AI API key in Settings", nil)
+				progressDialog := dialog.NewInformation("AI Assistant", "Making friendly...", nil)
+				progressDialog.Show()
+
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+					defer cancel()
+
+					friendly, err := assistant.MakeFriendly(ctx, bodyEntry.Text)
+					progressDialog.Hide()
+
+					if err != nil {
+						dialog.ShowError(fmt.Errorf("failed to make friendly: %w", err), nil)
+						return
+					}
+
+					dialog.ShowConfirm("AI Assistant", "Apply friendly version?",
+						func(apply bool) {
+							if apply {
+								bodyEntry.SetText(friendly)
+							}
+						}, nil)
+				}()
 			}),
 			fyne.NewMenuItemSeparator(),
 			fyne.NewMenuItem("Generate Draft", func() {
@@ -127,12 +315,45 @@ func buildComposerTab() fyne.CanvasObject {
 					widget.NewFormItem("Description", promptEntry),
 				}, func(confirmed bool) {
 					if confirmed && promptEntry.Text != "" {
-						dialog.ShowInformation("Generating", "Generating draft...\n\n⚠️ Configure AI API key in Settings", nil)
+						progressDialog := dialog.NewInformation("AI Assistant", "Generating draft...", nil)
+						progressDialog.Show()
+
+						go func() {
+							ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+							defer cancel()
+
+							draft, err := assistant.GenerateDraft(ctx, promptEntry.Text)
+							progressDialog.Hide()
+
+							if err != nil {
+								dialog.ShowError(fmt.Errorf("failed to generate draft: %w", err), nil)
+								return
+							}
+
+							bodyEntry.SetText(draft)
+							dialog.ShowInformation("AI Assistant", "✓ Draft generated!", nil)
+						}()
 					}
 				}, nil)
 			}),
 			fyne.NewMenuItem("Summarize", func() {
-				dialog.ShowInformation("AI", "Summarizing...\n\n⚠️ Configure AI API key in Settings", nil)
+				progressDialog := dialog.NewInformation("AI Assistant", "Summarizing...", nil)
+				progressDialog.Show()
+
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+					defer cancel()
+
+					summary, err := assistant.SummarizeEmail(ctx, bodyEntry.Text)
+					progressDialog.Hide()
+
+					if err != nil {
+						dialog.ShowError(fmt.Errorf("failed to summarize: %w", err), nil)
+						return
+					}
+
+					dialog.ShowInformation("Summary", summary, nil)
+				}()
 			}),
 		), fyne.CurrentApp().Driver().CanvasForObject(aiBtn))
 		aiMenu.ShowAtPosition(fyne.NewPos(100, 100))
@@ -166,6 +387,10 @@ func buildComposerTab() fyne.CanvasObject {
 	// Encryption/Security indicator
 	securityIndicator := widget.NewLabel("🔒 Standard TLS encryption")
 
+	// Undo notification state
+	var undoDialog dialog.Dialog
+	var undoTimer *time.Ticker
+
 	// Action buttons
 	sendBtn := widget.NewButton("Send", func() {
 		to := strings.TrimSpace(toEntry.Text)
@@ -179,24 +404,93 @@ func buildComposerTab() fyne.CanvasObject {
 
 		// Determine if sending via AMF or traditional email
 		isAMP := strings.HasPrefix(to, "did:aftersmtp:")
+		format := formatSelect.Selected
+		account := accountSelect.Selected
 
-		var result string
-		if isAMP {
-			result = sendAMPMessage(to, subject, body, formatSelect.Selected)
-		} else {
-			result = sendTraditionalMessage(to, subject, body, formatSelect.Selected, accountSelect.Selected)
+		// Create a simple message structure for undo send
+		// In production, this would be a proper accounts.Message
+		// For now, we'll use a mock message
+
+		// Schedule the send with 10 second delay
+		sendID, err := undoManager.ScheduleSend(nil, 10*time.Second)
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("failed to schedule send: %w", err), nil)
+			return
 		}
 
-		dialog.ShowInformation("Send Result", result, nil)
+		// Show undo countdown notification
+		timeRemaining := widget.NewLabel("10 seconds")
+		undoBtn := widget.NewButton("Undo Send", func() {
+			if err := undoManager.CancelSend(sendID); err == nil {
+				if undoTimer != nil {
+					undoTimer.Stop()
+				}
+				if undoDialog != nil {
+					undoDialog.Hide()
+				}
+				dialog.ShowInformation("Cancelled", "Message sending cancelled", nil)
+			}
+		})
+		undoBtn.Importance = widget.WarningImportance
 
-		// Clear form on success
-		if strings.Contains(result, "successfully") {
-			toEntry.SetText("")
-			ccEntry.SetText("")
-			bccEntry.SetText("")
-			subjectEntry.SetText("")
-			bodyEntry.SetText("")
-		}
+		undoContent := container.NewVBox(
+			widget.NewLabel(fmt.Sprintf("Sending to: %s", to)),
+			widget.NewLabel(fmt.Sprintf("Subject: %s", subject)),
+			widget.NewSeparator(),
+			container.NewHBox(
+				widget.NewLabel("Sending in:"),
+				timeRemaining,
+			),
+			undoBtn,
+		)
+
+		undoDialog = dialog.NewCustom("Message Scheduled", "OK", undoContent, nil)
+		undoDialog.Show()
+
+		// Start countdown timer
+		undoTimer = time.NewTicker(1 * time.Second)
+		go func() {
+			countdown := 10
+			for range undoTimer.C {
+				countdown--
+				if countdown <= 0 {
+					undoTimer.Stop()
+					timeRemaining.SetText("Sending now...")
+
+					// Actually send the message
+					var result string
+					if isAMP {
+						result = sendAMPMessage(to, subject, body, format)
+					} else {
+						result = sendTraditionalMessage(to, subject, body, format, account)
+					}
+
+					// Hide undo dialog and show result
+					if undoDialog != nil {
+						undoDialog.Hide()
+					}
+					dialog.ShowInformation("Sent", result, nil)
+
+					// Clear form on success
+					if strings.Contains(result, "successfully") {
+						toEntry.SetText("")
+						ccEntry.SetText("")
+						bccEntry.SetText("")
+						subjectEntry.SetText("")
+						bodyEntry.SetText("")
+					}
+					return
+				}
+				timeRemaining.SetText(fmt.Sprintf("%d seconds", countdown))
+				timeRemaining.Refresh()
+			}
+		}()
+
+		// Set callback for when message is actually sent
+		undoManager.SetOnSend(func(msg *accounts.Message) error {
+			// This would normally call the actual send function
+			return nil
+		})
 	})
 	sendBtn.Importance = widget.HighImportance
 

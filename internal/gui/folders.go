@@ -28,6 +28,8 @@ type Message struct {
 	Account  string
 	To       string
 	Attachments string
+	Category string
+	CategoryConfidence float64
 }
 
 // mailState holds the application state
@@ -115,6 +117,8 @@ Best regards,
 Sarah Johnson
 Financial Director`,
 			Attachments: "Q4_Report.pdf (2.3 MB), Budget_Template.xlsx (156 KB)",
+			Category: "Work",
+			CategoryConfidence: 0.95,
 		},
 		{
 			ID:      "2",
@@ -134,6 +138,8 @@ Financial Director`,
 
 Keep up the great work!`,
 			Attachments: "",
+			Category: "Newsletters",
+			CategoryConfidence: 0.82,
 		},
 		{
 			ID:      "3",
@@ -154,6 +160,8 @@ One question: How are you handling key rotation for long-lived conversations?
 Best,
 Alice`,
 			Attachments: "",
+			Category: "Work",
+			CategoryConfidence: 0.88,
 		},
 		{
 			ID:      "4",
@@ -171,6 +179,8 @@ We need everyone's approval before we can proceed.
 
 Thanks!`,
 			Attachments: "Campaign_Brief.pdf (1.2 MB)",
+			Category: "Work",
+			CategoryConfidence: 0.91,
 		},
 		{
 			ID:      "5",
@@ -190,6 +200,8 @@ Thanks!`,
 
 Consider updating your profile to highlight these skills.`,
 			Attachments: "",
+			Category: "Social",
+			CategoryConfidence: 0.94,
 		},
 	}
 }
@@ -478,12 +490,14 @@ func buildMessageListPane(state *mailState) fyne.CanvasObject {
 			subjectLabel := widget.NewLabelWithStyle("Subject", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 			previewLabel := widget.NewLabel("Preview text...")
 			accountBadge := widget.NewLabel("Account")
+			categoryBadge := widget.NewLabel("Category")
 
 			topRow := container.NewHBox(
 				unreadIndicator,
 				starIcon,
 				fromLabel,
 				layout.NewSpacer(),
+				categoryBadge,
 				accountBadge,
 				dateLabel,
 			)
@@ -507,8 +521,9 @@ func buildMessageListPane(state *mailState) fyne.CanvasObject {
 			unreadDot := topRow.Objects[0].(*canvas.Circle)
 			starIcon := topRow.Objects[1].(*widget.Label)
 			fromLabel := topRow.Objects[2].(*widget.Label)
-			accountBadge := topRow.Objects[4].(*widget.Label)
-			dateLabel := topRow.Objects[5].(*widget.Label)
+			categoryBadge := topRow.Objects[4].(*widget.Label)
+			accountBadge := topRow.Objects[5].(*widget.Label)
+			dateLabel := topRow.Objects[6].(*widget.Label)
 
 			subjectLabel := vbox.Objects[1].(*widget.Label)
 			previewLabel := vbox.Objects[2].(*widget.Label)
@@ -529,6 +544,24 @@ func buildMessageListPane(state *mailState) fyne.CanvasObject {
 				starIcon.SetText("⭐")
 			} else {
 				starIcon.SetText("☆")
+			}
+
+			// Update category badge with color coding
+			categoryIcons := map[string]string{
+				"Work":        "💼",
+				"Personal":    "🏠",
+				"Finance":     "💰",
+				"Shopping":    "🛒",
+				"Social":      "👥",
+				"Newsletters": "📰",
+				"Promotions":  "🏷️",
+				"Spam":        "🚫",
+			}
+
+			if icon, ok := categoryIcons[msg.Category]; ok {
+				categoryBadge.SetText(fmt.Sprintf("%s %s", icon, msg.Category))
+			} else {
+				categoryBadge.SetText(msg.Category)
 			}
 
 			fromLabel.SetText(msg.From)
@@ -559,17 +592,42 @@ func buildMessageListPane(state *mailState) fyne.CanvasObject {
 		widget.NewLabel("42 unread"),
 	)
 
+	// Category filter buttons
+	categoryFilterBar := container.NewHBox(
+		widget.NewLabel("Categories:"),
+		widget.NewButton("All", func() {
+			state.selectedFolder = "all"
+			state.messageList.Refresh()
+		}),
+		widget.NewButton("💼 Work", func() {
+			state.selectedFolder = "Work"
+			state.messageList.Refresh()
+		}),
+		widget.NewButton("💰 Finance", func() {
+			state.selectedFolder = "Finance"
+			state.messageList.Refresh()
+		}),
+		widget.NewButton("👥 Social", func() {
+			state.selectedFolder = "Social"
+			state.messageList.Refresh()
+		}),
+		widget.NewButton("📰 News", func() {
+			state.selectedFolder = "Newsletters"
+			state.messageList.Refresh()
+		}),
+	)
+
 	sortBar := container.NewHBox(
 		widget.NewButton("All", func() {}),
 		widget.NewButton("Unread", func() {}),
 		widget.NewButton("Starred", func() {}),
 		layout.NewSpacer(),
 		widget.NewLabel("Sort by:"),
-		widget.NewSelect([]string{"Date", "Sender", "Subject"}, nil),
+		widget.NewSelect([]string{"Date", "Sender", "Subject", "Category"}, nil),
 	)
 
 	return container.NewBorder(
-		container.NewVBox(listHeader, sortBar, widget.NewSeparator()),
+		container.NewVBox(listHeader, categoryFilterBar, sortBar, widget.NewSeparator()),
 		nil, nil, nil,
 		messageList,
 	)

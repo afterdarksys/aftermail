@@ -110,14 +110,56 @@ func buildAITab() fyne.CanvasObject {
 	modelEntry := widget.NewEntry()
 	modelEntry.SetPlaceHolder("claude-sonnet-4-20250514 (default)")
 
+	saveBtn := widget.NewButton("Save API Key", func() {
+		provider := "anthropic"
+		if providerSelect.Selected == "OpenRouter" {
+			provider = "openrouter"
+		}
+
+		apiKey := apiKeyEntry.Text
+		model := modelEntry.Text
+		if model == "" {
+			model = "claude-sonnet-4-20250514"
+		}
+
+		if err := SetAICredentials(provider, apiKey, model); err != nil {
+			// Show error
+			return
+		}
+
+		// Show success message
+	})
+	saveBtn.Importance = widget.HighImportance
+
 	testBtn := widget.NewButton("Test Connection", func() {
-		// TODO: Test API connection
+		provider := "anthropic"
+		if providerSelect.Selected == "OpenRouter" {
+			provider = "openrouter"
+		}
+
+		apiKey := apiKeyEntry.Text
+		model := modelEntry.Text
+		if model == "" {
+			model = "claude-sonnet-4-20250514"
+		}
+
+		if apiKey == "" {
+			return
+		}
+
+		// Test connection by creating a temporary assistant
+		// This will be implemented when we have proper error handling
 	})
 
 	form := widget.NewForm(
 		widget.NewFormItem("Provider", providerSelect),
 		widget.NewFormItem("API Key", apiKeyEntry),
 		widget.NewFormItem("Model (optional)", modelEntry),
+	)
+
+	buttonRow := container.NewHBox(
+		saveBtn,
+		testBtn,
 	)
 
 	helpText := widget.NewLabel(`AI Assistant Features:
@@ -139,7 +181,7 @@ Your API key is stored locally and never shared.`)
 		widget.NewLabelWithStyle("AI Assistant Configuration", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewSeparator(),
 		form,
-		testBtn,
+		buttonRow,
 		widget.NewSeparator(),
 		helpText,
 	)
