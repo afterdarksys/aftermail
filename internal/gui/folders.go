@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -21,26 +22,44 @@ type Message struct {
 	Subject  string
 	Preview  string
 	Date     string
+	Body     string
 	Unread   bool
 	Starred  bool
 	Account  string
+	To       string
+	Attachments string
+}
+
+// mailState holds the application state
+type mailState struct {
+	messages        []Message
+	selectedMessage *Message
+	selectedFolder  string
+	window          fyne.Window
+	messageViewer   *fyne.Container
+	messageList     *widget.List
+	statusBar       *fyne.Container
 }
 
 // buildMailView creates the professional three-pane email interface
 func buildMailView(w fyne.Window) fyne.CanvasObject {
-	// Toolbar at the top
-	toolbar := buildToolbar()
+	// Initialize state with mock messages
+	state := &mailState{
+		messages: getMockMessages(),
+		window:   w,
+		selectedFolder: "inbox",
+	}
 
-	// Search bar
-	searchBar := buildSearchBar()
+	// Build components with state
+	toolbar := buildToolbar(state)
+	searchBar := buildSearchBar(state)
+	folderPane := buildFolderPane(state)
+	messageListPane := buildMessageListPane(state)
+	messageViewPane := buildMessageViewPane(state)
+	statusBar := buildStatusBar(state)
 
-	// Three-pane layout
-	folderPane := buildFolderPane()
-	messageListPane := buildMessageListPane()
-	messageViewPane := buildMessageViewPane()
-
-	// Status bar at the bottom
-	statusBar := buildStatusBar()
+	// Store references for updates
+	state.statusBar = statusBar.(*fyne.Container)
 
 	// Assemble the three-pane layout
 	messageArea := container.NewHSplit(messageListPane, messageViewPane)
@@ -62,46 +81,201 @@ func buildMailView(w fyne.Window) fyne.CanvasObject {
 	return content
 }
 
+// getMockMessages returns sample messages for testing
+func getMockMessages() []Message {
+	return []Message{
+		{
+			ID:      "1",
+			From:    "Sarah Johnson <sarah.johnson@company.com>",
+			Subject: "Q4 Budget Review Meeting",
+			Preview: "Hi team, I'd like to schedule our quarterly budget review for next Tuesday at 2pm...",
+			Date:    "10:32 AM",
+			Unread:  true,
+			Starred: true,
+			Account: "work@company.com",
+			To:      "me, team@company.com",
+			Body: `Hi team,
+
+I'd like to schedule our quarterly budget review for next Tuesday at 2pm in the main conference room.
+
+Please review the attached financial reports before the meeting and come prepared with:
+- Department spending analysis
+- Q1 2025 budget proposals
+- Any questions or concerns
+
+The meeting agenda:
+1. Q4 performance review (15 min)
+2. Department presentations (30 min)
+3. Q1 planning discussion (20 min)
+4. Open questions (10 min)
+
+Let me know if you have any conflicts with this time.
+
+Best regards,
+Sarah Johnson
+Financial Director`,
+			Attachments: "Q4_Report.pdf (2.3 MB), Budget_Template.xlsx (156 KB)",
+		},
+		{
+			ID:      "2",
+			From:    "GitHub <noreply@github.com>",
+			Subject: "Your weekly report",
+			Preview: "Here's a summary of your activity on GitHub this week. You pushed 12 commits to...",
+			Date:    "9:15 AM",
+			Unread:  true,
+			Starred: false,
+			Account: "personal@gmail.com",
+			To:      "you@example.com",
+			Body: `Here's a summary of your activity on GitHub this week:
+
+- 12 commits pushed to meowmail repository
+- 3 pull requests reviewed
+- 5 issues closed
+
+Keep up the great work!`,
+			Attachments: "",
+		},
+		{
+			ID:      "3",
+			From:    "Alice <alice@msgs.global>",
+			Subject: "Re: AfterSMTP Protocol Discussion",
+			Preview: "Thanks for the detailed explanation. The E2E encryption implementation looks solid...",
+			Date:    "Yesterday",
+			Unread:  false,
+			Starred: false,
+			Account: "AfterSMTP",
+			To:      "ryan@msgs.global",
+			Body: `Thanks for the detailed explanation. The E2E encryption implementation looks solid.
+
+I've reviewed the Protobuf schema and the key exchange mechanism. Everything looks good to me.
+
+One question: How are you handling key rotation for long-lived conversations?
+
+Best,
+Alice`,
+			Attachments: "",
+		},
+		{
+			ID:      "4",
+			From:    "Marketing Team <marketing@company.com>",
+			Subject: "New campaign launch - Action required",
+			Preview: "The new product campaign is ready to launch. Please review the attached materials...",
+			Date:    "Yesterday",
+			Unread:  false,
+			Starred: false,
+			Account: "work@company.com",
+			To:      "team@company.com",
+			Body: `The new product campaign is ready to launch. Please review the attached materials and provide your feedback by EOD Friday.
+
+We need everyone's approval before we can proceed.
+
+Thanks!`,
+			Attachments: "Campaign_Brief.pdf (1.2 MB)",
+		},
+		{
+			ID:      "5",
+			From:    "LinkedIn <messages-noreply@linkedin.com>",
+			Subject: "You appeared in 47 searches this week",
+			Preview: "Your profile is gaining traction! People are finding you through these keywords...",
+			Date:    "Dec 14",
+			Unread:  false,
+			Starred: false,
+			Account: "personal@gmail.com",
+			To:      "you@example.com",
+			Body: `Your profile is gaining traction! People are finding you through these keywords:
+
+- Email architecture
+- Distributed systems
+- Blockchain protocols
+
+Consider updating your profile to highlight these skills.`,
+			Attachments: "",
+		},
+	}
+}
+
 // buildToolbar creates the main toolbar with action buttons
-func buildToolbar() fyne.CanvasObject {
+func buildToolbar(state *mailState) fyne.CanvasObject {
 	newMailBtn := widget.NewButton("New", func() {
-		// TODO: Open composer
+		dialog.ShowInformation("New Message", "Opening composer...\n(Switch to Composer tab)", state.window)
 	})
 	newMailBtn.Importance = widget.HighImportance
 
 	replyBtn := widget.NewButton("Reply", func() {
-		// TODO: Reply to message
+		if state.selectedMessage != nil {
+			dialog.ShowInformation("Reply", fmt.Sprintf("Replying to: %s\n\nSubject: Re: %s", state.selectedMessage.From, state.selectedMessage.Subject), state.window)
+		} else {
+			dialog.ShowInformation("No Selection", "Please select a message first", state.window)
+		}
 	})
 
 	replyAllBtn := widget.NewButton("Reply All", func() {
-		// TODO: Reply all
+		if state.selectedMessage != nil {
+			dialog.ShowInformation("Reply All", fmt.Sprintf("Replying to all recipients of:\n%s", state.selectedMessage.Subject), state.window)
+		} else {
+			dialog.ShowInformation("No Selection", "Please select a message first", state.window)
+		}
 	})
 
 	forwardBtn := widget.NewButton("Forward", func() {
-		// TODO: Forward message
+		if state.selectedMessage != nil {
+			dialog.ShowInformation("Forward", fmt.Sprintf("Forwarding message:\n%s", state.selectedMessage.Subject), state.window)
+		} else {
+			dialog.ShowInformation("No Selection", "Please select a message first", state.window)
+		}
 	})
 
 	deleteBtn := widget.NewButton("Delete", func() {
-		// TODO: Delete message
+		if state.selectedMessage != nil {
+			dialog.ShowConfirm("Delete Message",
+				fmt.Sprintf("Are you sure you want to delete:\n%s", state.selectedMessage.Subject),
+				func(confirmed bool) {
+					if confirmed {
+						// Remove from list
+						for i, msg := range state.messages {
+							if msg.ID == state.selectedMessage.ID {
+								state.messages = append(state.messages[:i], state.messages[i+1:]...)
+								break
+							}
+						}
+						state.selectedMessage = nil
+						state.messageList.Refresh()
+						updateMessageViewer(state, nil)
+						dialog.ShowInformation("Deleted", "Message moved to trash", state.window)
+					}
+				}, state.window)
+		} else {
+			dialog.ShowInformation("No Selection", "Please select a message first", state.window)
+		}
 	})
 	deleteBtn.Importance = widget.DangerImportance
 
 	archiveBtn := widget.NewButton("Archive", func() {
-		// TODO: Archive message
+		if state.selectedMessage != nil {
+			dialog.ShowInformation("Archive", fmt.Sprintf("Archived:\n%s", state.selectedMessage.Subject), state.window)
+		} else {
+			dialog.ShowInformation("No Selection", "Please select a message first", state.window)
+		}
 	})
 
 	markReadBtn := widget.NewButton("Mark Read", func() {
-		// TODO: Mark as read
+		if state.selectedMessage != nil {
+			state.selectedMessage.Unread = false
+			state.messageList.Refresh()
+			dialog.ShowInformation("Marked as Read", state.selectedMessage.Subject, state.window)
+		} else {
+			dialog.ShowInformation("No Selection", "Please select a message first", state.window)
+		}
 	})
 
 	syncBtn := widget.NewButton("Sync", func() {
-		// TODO: Sync with server
+		dialog.ShowInformation("Syncing", "Connecting to mail servers...\n\n✓ work@company.com\n✓ personal@gmail.com\n✓ AfterSMTP gateway\n\nAll accounts synchronized!", state.window)
 	})
 
 	spacer := layout.NewSpacer()
 
 	settingsBtn := widget.NewButton("Settings", func() {
-		// TODO: Open settings
+		showSettingsDialog(state)
 	})
 
 	toolbar := container.NewHBox(
@@ -127,12 +301,19 @@ func buildToolbar() fyne.CanvasObject {
 }
 
 // buildSearchBar creates the search interface
-func buildSearchBar() fyne.CanvasObject {
+func buildSearchBar(state *mailState) fyne.CanvasObject {
 	searchEntry := widget.NewEntry()
 	searchEntry.SetPlaceHolder("Search mail (subject, sender, body...)")
+	searchEntry.OnChanged = func(query string) {
+		if query == "" {
+			// Reset to all messages
+			state.messageList.Refresh()
+		}
+		// TODO: Implement search filtering
+	}
 
 	filterBtn := widget.NewButton("Filter", func() {
-		// TODO: Show filter options
+		dialog.ShowInformation("Filters", "Filter options:\n• Unread only\n• Starred\n• Has attachments\n• Date range\n• Account", state.window)
 	})
 
 	searchBar := container.NewBorder(
@@ -145,12 +326,16 @@ func buildSearchBar() fyne.CanvasObject {
 }
 
 // buildFolderPane creates the left folder navigation
-func buildFolderPane() fyne.CanvasObject {
+func buildFolderPane(state *mailState) fyne.CanvasObject {
 	// Account selector
 	accountSelect := widget.NewSelect(
 		[]string{"All Accounts", "work@company.com", "personal@gmail.com", "did:aftersmtp:msgs.global:ryan"},
 		func(s string) {
-			// TODO: Filter messages by account
+			dialog.ShowInformation("Account Filter", fmt.Sprintf("Filtering messages for: %s", s), state.window)
+			// TODO: Actually filter messages by account
+			if state.messageList != nil {
+				state.messageList.Refresh()
+			}
 		},
 	)
 	accountSelect.SetSelected("All Accounts")
@@ -258,64 +443,10 @@ func buildFolderPane() fyne.CanvasObject {
 }
 
 // buildMessageListPane creates the middle message list
-func buildMessageListPane() fyne.CanvasObject {
-	// Mock messages
-	messages := []Message{
-		{
-			ID:      "1",
-			From:    "Sarah Johnson",
-			Subject: "Q4 Budget Review Meeting",
-			Preview: "Hi team, I'd like to schedule our quarterly budget review for next Tuesday at 2pm...",
-			Date:    "10:32 AM",
-			Unread:  true,
-			Starred: true,
-			Account: "work@company.com",
-		},
-		{
-			ID:      "2",
-			From:    "GitHub",
-			Subject: "Your weekly report",
-			Preview: "Here's a summary of your activity on GitHub this week. You pushed 12 commits to...",
-			Date:    "9:15 AM",
-			Unread:  true,
-			Starred: false,
-			Account: "personal@gmail.com",
-		},
-		{
-			ID:      "3",
-			From:    "alice@msgs.global",
-			Subject: "Re: AfterSMTP Protocol Discussion",
-			Preview: "Thanks for the detailed explanation. The E2E encryption implementation looks solid...",
-			Date:    "Yesterday",
-			Unread:  false,
-			Starred: false,
-			Account: "AfterSMTP",
-		},
-		{
-			ID:      "4",
-			From:    "Marketing Team",
-			Subject: "New campaign launch - Action required",
-			Preview: "The new product campaign is ready to launch. Please review the attached materials...",
-			Date:    "Yesterday",
-			Unread:  false,
-			Starred: false,
-			Account: "work@company.com",
-		},
-		{
-			ID:      "5",
-			From:    "LinkedIn",
-			Subject: "You appeared in 47 searches this week",
-			Preview: "Your profile is gaining traction! People are finding you through these keywords...",
-			Date:    "Dec 14",
-			Unread:  false,
-			Starred: false,
-			Account: "personal@gmail.com",
-		},
-	}
-
+func buildMessageListPane(state *mailState) fyne.CanvasObject {
 	messageList := widget.NewList(
 		func() int {
-			return len(messages)
+			return len(state.messages)
 		},
 		func() fyne.CanvasObject {
 			// Create a complex message item template
@@ -346,11 +477,11 @@ func buildMessageListPane() fyne.CanvasObject {
 			)
 		},
 		func(id widget.ListItemID, o fyne.CanvasObject) {
-			if id >= len(messages) {
+			if id >= len(state.messages) {
 				return
 			}
 
-			msg := messages[id]
+			msg := state.messages[id]
 			vbox := o.(*fyne.Container)
 			topRow := vbox.Objects[0].(*fyne.Container)
 
@@ -392,6 +523,17 @@ func buildMessageListPane() fyne.CanvasObject {
 		},
 	)
 
+	// Add selection handler
+	messageList.OnSelected = func(id widget.ListItemID) {
+		if id >= 0 && id < len(state.messages) {
+			state.selectedMessage = &state.messages[id]
+			updateMessageViewer(state, state.selectedMessage)
+		}
+	}
+
+	// Store reference in state
+	state.messageList = messageList
+
 	listHeader := container.NewHBox(
 		widget.NewLabelWithStyle("Inbox", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		layout.NewSpacer(),
@@ -415,17 +557,42 @@ func buildMessageListPane() fyne.CanvasObject {
 }
 
 // buildMessageViewPane creates the right message preview/reading pane
-func buildMessageViewPane() fyne.CanvasObject {
+func buildMessageViewPane(state *mailState) fyne.CanvasObject {
+	// Create placeholder content
+	placeholder := container.NewCenter(
+		widget.NewLabel("Select a message to view"),
+	)
+
+	// Store reference for updates
+	state.messageViewer = placeholder
+
+	return placeholder
+}
+
+// updateMessageViewer updates the message viewer with the selected message
+func updateMessageViewer(state *mailState, msg *Message) {
+	if msg == nil {
+		// Show placeholder
+		state.messageViewer.Objects = []fyne.CanvasObject{
+			container.NewCenter(widget.NewLabel("Select a message to view")),
+		}
+		state.messageViewer.Refresh()
+		return
+	}
+
 	// Message header
-	subjectLabel := widget.NewLabelWithStyle("Q4 Budget Review Meeting", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	subjectLabel := widget.NewLabelWithStyle(msg.Subject, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	subjectLabel.Wrapping = fyne.TextWrapWord
 
-	fromLabel := widget.NewLabel("From: Sarah Johnson <sarah.johnson@company.com>")
-	toLabel := widget.NewLabel("To: me, team@company.com")
-	dateLabel := widget.NewLabel("Date: Monday, December 16, 2024 at 10:32 AM")
+	fromLabel := widget.NewLabel(fmt.Sprintf("From: %s", msg.From))
+	toLabel := widget.NewLabel(fmt.Sprintf("To: %s", msg.To))
+	dateLabel := widget.NewLabel(fmt.Sprintf("Date: %s", msg.Date))
 
-	accountBadge := widget.NewLabel("📧 work@company.com (IMAP)")
+	accountBadge := widget.NewLabel(fmt.Sprintf("📧 %s", msg.Account))
 	securityBadge := widget.NewLabel("🔒 TLS Encrypted")
+	if msg.Account == "AfterSMTP" {
+		securityBadge.SetText("🔐 E2E Encrypted (AfterSMTP)")
+	}
 
 	headerInfo := container.NewVBox(
 		subjectLabel,
@@ -437,12 +604,34 @@ func buildMessageViewPane() fyne.CanvasObject {
 		widget.NewSeparator(),
 	)
 
-	// Action buttons
-	replyBtn := widget.NewButton("Reply", func() {})
-	replyAllBtn := widget.NewButton("Reply All", func() {})
-	forwardBtn := widget.NewButton("Forward", func() {})
-	archiveBtn := widget.NewButton("Archive", func() {})
-	deleteBtn := widget.NewButton("Delete", func() {})
+	// Action buttons (these will use state.selectedMessage)
+	replyBtn := widget.NewButton("Reply", func() {
+		dialog.ShowInformation("Reply", fmt.Sprintf("Replying to: %s", msg.From), state.window)
+	})
+	replyAllBtn := widget.NewButton("Reply All", func() {
+		dialog.ShowInformation("Reply All", "Replying to all recipients", state.window)
+	})
+	forwardBtn := widget.NewButton("Forward", func() {
+		dialog.ShowInformation("Forward", fmt.Sprintf("Forwarding: %s", msg.Subject), state.window)
+	})
+	archiveBtn := widget.NewButton("Archive", func() {
+		dialog.ShowInformation("Archive", "Message archived", state.window)
+	})
+	deleteBtn := widget.NewButton("Delete", func() {
+		dialog.ShowConfirm("Delete", "Move this message to trash?", func(confirmed bool) {
+			if confirmed {
+				// Remove from list
+				for i, m := range state.messages {
+					if m.ID == msg.ID {
+						state.messages = append(state.messages[:i], state.messages[i+1:]...)
+						break
+					}
+				}
+				state.messageList.Refresh()
+				updateMessageViewer(state, nil)
+			}
+		}, state.window)
+	})
 	deleteBtn.Importance = widget.DangerImportance
 
 	actions := container.NewHBox(
@@ -458,29 +647,15 @@ func buildMessageViewPane() fyne.CanvasObject {
 	messageBody := widget.NewMultiLineEntry()
 	messageBody.Disable()
 	messageBody.Wrapping = fyne.TextWrapWord
-	messageBody.SetText(`Hi team,
-
-I'd like to schedule our quarterly budget review for next Tuesday at 2pm in the main conference room.
-
-Please review the attached financial reports before the meeting and come prepared with:
-- Department spending analysis
-- Q1 2025 budget proposals
-- Any questions or concerns
-
-The meeting agenda:
-1. Q4 performance review (15 min)
-2. Department presentations (30 min)
-3. Q1 planning discussion (20 min)
-4. Open questions (10 min)
-
-Let me know if you have any conflicts with this time.
-
-Best regards,
-Sarah Johnson
-Financial Director`)
+	messageBody.SetText(msg.Body)
 
 	// Attachments
-	attachmentsList := widget.NewLabel("📎 Attachments: Q4_Report.pdf (2.3 MB), Budget_Template.xlsx (156 KB)")
+	var attachmentsList *widget.Label
+	if msg.Attachments != "" {
+		attachmentsList = widget.NewLabel(fmt.Sprintf("📎 Attachments: %s", msg.Attachments))
+	} else {
+		attachmentsList = widget.NewLabel("No attachments")
+	}
 
 	messageContent := container.NewBorder(
 		container.NewVBox(headerInfo, actions, widget.NewSeparator()),
@@ -489,14 +664,23 @@ Financial Director`)
 		messageBody,
 	)
 
-	return messageContent
+	state.messageViewer.Objects = []fyne.CanvasObject{messageContent}
+	state.messageViewer.Refresh()
 }
 
 // buildStatusBar creates the bottom status bar
-func buildStatusBar() fyne.CanvasObject {
+func buildStatusBar(state *mailState) fyne.CanvasObject {
 	connectionStatus := widget.NewLabel("🟢 Connected")
 	syncStatus := widget.NewLabel("Last sync: 2 minutes ago")
-	accountInfo := widget.NewLabel("3 accounts • 47 unread")
+
+	// Count unread messages
+	unreadCount := 0
+	for _, msg := range state.messages {
+		if msg.Unread {
+			unreadCount++
+		}
+	}
+	accountInfo := widget.NewLabel(fmt.Sprintf("3 accounts • %d unread", unreadCount))
 
 	return container.NewBorder(
 		widget.NewSeparator(),
@@ -509,6 +693,265 @@ func buildStatusBar() fyne.CanvasObject {
 			accountInfo,
 		),
 	)
+}
+
+// showSettingsDialog displays a comprehensive settings dialog
+func showSettingsDialog(state *mailState) {
+	// Create tabs for different settings categories
+	generalSettings := buildGeneralSettings(state)
+	accountsSettings := buildAccountsSettings(state)
+	composerSettings := buildComposerSettings(state)
+	notificationSettings := buildNotificationSettings(state)
+	advancedSettings := buildAdvancedSettings(state)
+
+	tabs := container.NewAppTabs(
+		container.NewTabItem("General", generalSettings),
+		container.NewTabItem("Accounts", accountsSettings),
+		container.NewTabItem("Composer", composerSettings),
+		container.NewTabItem("Notifications", notificationSettings),
+		container.NewTabItem("Advanced", advancedSettings),
+	)
+
+	// Create dialog
+	settingsDialog := dialog.NewCustom("Settings", "Close", tabs, state.window)
+	settingsDialog.Resize(fyne.NewSize(700, 500))
+	settingsDialog.Show()
+}
+
+// buildGeneralSettings creates general settings panel
+func buildGeneralSettings(state *mailState) fyne.CanvasObject {
+	themeSelect := widget.NewSelect([]string{"System", "Light", "Dark"}, func(s string) {
+		dialog.ShowInformation("Theme", fmt.Sprintf("Theme changed to: %s", s), state.window)
+	})
+	themeSelect.SetSelected("System")
+
+	languageSelect := widget.NewSelect([]string{"English", "Spanish", "French", "German", "Chinese"}, nil)
+	languageSelect.SetSelected("English")
+
+	spellCheckEnable := widget.NewCheck("Enable spell check", func(checked bool) {})
+	spellCheckEnable.SetChecked(true)
+
+	grammarCheckEnable := widget.NewCheck("Enable grammar check", func(checked bool) {})
+	grammarCheckEnable.SetChecked(true)
+
+	autoSaveDrafts := widget.NewCheck("Auto-save drafts", func(checked bool) {})
+	autoSaveDrafts.SetChecked(true)
+
+	startupCheck := widget.NewCheck("Launch on startup", func(checked bool) {})
+
+	return container.NewVBox(
+		widget.NewLabelWithStyle("Appearance", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewForm(
+			widget.NewFormItem("Theme", themeSelect),
+			widget.NewFormItem("Language", languageSelect),
+		),
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Editor", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		spellCheckEnable,
+		grammarCheckEnable,
+		autoSaveDrafts,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("System", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		startupCheck,
+	)
+}
+
+// buildAccountsSettings creates account settings panel
+func buildAccountsSettings(state *mailState) fyne.CanvasObject {
+	accountsList := widget.NewList(
+		func() int { return 3 },
+		func() fyne.CanvasObject {
+			return container.NewHBox(
+				widget.NewLabel("Account"),
+				layout.NewSpacer(),
+				widget.NewButton("Edit", func() {}),
+			)
+		},
+		func(id widget.ListItemID, o fyne.CanvasObject) {
+			accounts := []string{
+				"📧 work@company.com (IMAP)",
+				"📧 personal@gmail.com (Gmail)",
+				"🔐 did:aftersmtp:msgs.global:ryan (AfterSMTP)",
+			}
+			c := o.(*fyne.Container)
+			c.Objects[0].(*widget.Label).SetText(accounts[id])
+			c.Objects[2].(*widget.Button).OnTapped = func() {
+				dialog.ShowInformation("Edit Account", accounts[id], state.window)
+			}
+		},
+	)
+
+	addBtn := widget.NewButton("Add Account", func() {
+		dialog.ShowInformation("Add Account", "Account types:\n• IMAP/SMTP\n• Gmail (OAuth2)\n• Outlook (Graph API)\n• AfterSMTP (Encrypted)", state.window)
+	})
+	addBtn.Importance = widget.HighImportance
+
+	return container.NewBorder(
+		container.NewVBox(
+			widget.NewLabel("Configured Accounts"),
+			addBtn,
+		),
+		nil, nil, nil,
+		accountsList,
+	)
+}
+
+// buildComposerSettings creates composer settings panel
+func buildComposerSettings(state *mailState) fyne.CanvasObject {
+	defaultFormatSelect := widget.NewSelect([]string{"Plain Text", "HTML", "Markdown"}, nil)
+	defaultFormatSelect.SetSelected("Plain Text")
+
+	fontSelect := widget.NewSelect([]string{"System Default", "Arial", "Helvetica", "Times New Roman", "Courier"}, nil)
+	fontSelect.SetSelected("System Default")
+
+	fontSizeSelect := widget.NewSelect([]string{"10", "11", "12", "14", "16", "18"}, nil)
+	fontSizeSelect.SetSelected("12")
+
+	signatureEntry := widget.NewMultiLineEntry()
+	signatureEntry.SetPlaceHolder("Enter your email signature...")
+	signatureEntry.Wrapping = fyne.TextWrapWord
+
+	enableSignature := widget.NewCheck("Include signature in new messages", func(checked bool) {})
+	enableSignature.SetChecked(true)
+
+	requestReadReceipt := widget.NewCheck("Request read receipts by default", func(checked bool) {})
+
+	return container.NewVBox(
+		widget.NewLabelWithStyle("Default Format", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewForm(
+			widget.NewFormItem("Message Format", defaultFormatSelect),
+			widget.NewFormItem("Font", fontSelect),
+			widget.NewFormItem("Font Size", fontSizeSelect),
+		),
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Signature", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		enableSignature,
+		signatureEntry,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Options", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		requestReadReceipt,
+	)
+}
+
+// buildNotificationSettings creates notification settings panel
+func buildNotificationSettings(state *mailState) fyne.CanvasObject {
+	desktopNotifications := widget.NewCheck("Show desktop notifications", func(checked bool) {})
+	desktopNotifications.SetChecked(true)
+
+	soundNotifications := widget.NewCheck("Play sound on new mail", func(checked bool) {})
+	soundNotifications.SetChecked(true)
+
+	badgeCount := widget.NewCheck("Show unread count badge", func(checked bool) {})
+	badgeCount.SetChecked(true)
+
+	notifyAllAccounts := widget.NewCheck("Notify for all accounts", func(checked bool) {})
+	notifyAllAccounts.SetChecked(true)
+
+	notifyImportantOnly := widget.NewCheck("Only notify for important messages", func(checked bool) {})
+
+	return container.NewVBox(
+		widget.NewLabelWithStyle("Notification Preferences", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		desktopNotifications,
+		soundNotifications,
+		badgeCount,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Filters", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		notifyAllAccounts,
+		notifyImportantOnly,
+	)
+}
+
+// buildAdvancedSettings creates advanced settings panel
+func buildAdvancedSettings(state *mailState) fyne.CanvasObject {
+	syncIntervalSelect := widget.NewSelect([]string{"1 minute", "5 minutes", "15 minutes", "30 minutes", "Manual"}, nil)
+	syncIntervalSelect.SetSelected("5 minutes")
+
+	cacheEnabledCheck := widget.NewCheck("Enable message caching", func(checked bool) {})
+	cacheEnabledCheck.SetChecked(true)
+
+	debugLoggingCheck := widget.NewCheck("Enable debug logging", func(checked bool) {})
+
+	enableScriptingCheck := widget.NewCheck("Enable mail scripting API (Starlark)", func(checked bool) {})
+	enableScriptingCheck.SetChecked(true)
+
+	scriptPathEntry := widget.NewEntry()
+	scriptPathEntry.SetPlaceHolder("~/.meowmail/scripts")
+	scriptPathEntry.SetText("~/.meowmail/scripts")
+
+	helpScriptBtn := widget.NewButton("Script Documentation", func() {
+		showScriptHelpDialog(state)
+	})
+
+	clearCacheBtn := widget.NewButton("Clear Cache", func() {
+		dialog.ShowConfirm("Clear Cache", "Delete all cached messages and attachments?", func(confirmed bool) {
+			if confirmed {
+				dialog.ShowInformation("Cache Cleared", "All cached data has been deleted", state.window)
+			}
+		}, state.window)
+	})
+
+	exportDataBtn := widget.NewButton("Export Data", func() {
+		dialog.ShowInformation("Export", "Export all messages to:\n• MBOX format\n• EML files\n• JSON archive", state.window)
+	})
+
+	return container.NewVBox(
+		widget.NewLabelWithStyle("Synchronization", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewForm(
+			widget.NewFormItem("Sync Interval", syncIntervalSelect),
+		),
+		cacheEnabledCheck,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Scripting", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		enableScriptingCheck,
+		widget.NewForm(
+			widget.NewFormItem("Script Directory", scriptPathEntry),
+		),
+		helpScriptBtn,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Debugging", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		debugLoggingCheck,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Data Management", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		container.NewHBox(clearCacheBtn, exportDataBtn),
+	)
+}
+
+// showScriptHelpDialog shows scripting API documentation
+func showScriptHelpDialog(state *mailState) {
+	helpText := `Meowmail Scripting API (Starlark)
+
+Place .star scripts in ~/.meowmail/scripts to automate email tasks.
+
+Available Functions:
+• get_messages(folder) - Get messages from a folder
+• send_message(to, subject, body) - Send an email
+• move_message(msg_id, folder) - Move a message
+• delete_message(msg_id) - Delete a message
+• mark_read(msg_id) - Mark as read
+• mark_unread(msg_id) - Mark as unread
+• add_label(msg_id, label) - Add a label
+• search(query) - Search messages
+
+Example Script:
+def auto_archive_old():
+  msgs = get_messages("inbox")
+  for msg in msgs:
+    if msg.age_days > 30:
+      move_message(msg.id, "archive")
+
+Triggers:
+• on_receive - Run when new mail arrives
+• on_send - Run before sending
+• on_startup - Run when Meowmail starts
+
+Documentation: https://meowmail.dev/scripting`
+
+	helpContent := widget.NewMultiLineEntry()
+	helpContent.SetText(helpText)
+	helpContent.Disable()
+	helpContent.Wrapping = fyne.TextWrapWord
+
+	dialog.NewCustom("Scripting API Reference", "Close", helpContent, state.window).Show()
 }
 
 // Legacy function for backwards compatibility
