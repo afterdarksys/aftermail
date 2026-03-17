@@ -251,8 +251,8 @@ type AMPMessage struct {
 	EncryptedPayload []byte `protobuf:"bytes,2,opt,name=encrypted_payload,json=encryptedPayload,proto3" json:"encrypted_payload,omitempty"`
 	// Ephemeral public key used by the sender for this specific encryption
 	EphemeralPublicKey []byte `protobuf:"bytes,3,opt,name=ephemeral_public_key,json=ephemeralPublicKey,proto3" json:"ephemeral_public_key,omitempty"`
-	// Ed25519 signature of the headers + encrypted_payload, signed by sender_did's private key
-	Signature []byte `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`
+	// Ed25519 signatures of the headers + encrypted_payload, signed by sender_did's private key (and optionally others)
+	Signatures [][]byte `protobuf:"bytes,4,rep,name=signatures,proto3" json:"signatures,omitempty"`
 	// Optional blockchain proof or transaction ID anchoring this message's transit
 	BlockchainProof string `protobuf:"bytes,5,opt,name=blockchain_proof,json=blockchainProof,proto3" json:"blockchain_proof,omitempty"`
 	unknownFields   protoimpl.UnknownFields
@@ -310,9 +310,9 @@ func (x *AMPMessage) GetEphemeralPublicKey() []byte {
 	return nil
 }
 
-func (x *AMPMessage) GetSignature() []byte {
+func (x *AMPMessage) GetSignatures() [][]byte {
 	if x != nil {
-		return x.Signature
+		return x.Signatures
 	}
 	return nil
 }
@@ -413,13 +413,15 @@ const file_amp_proto_rawDesc = "" +
 	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x04 \x01(\tR\tmessageId\x12!\n" +
-	"\fprevious_hop\x18\x05 \x01(\tR\vpreviousHop\"\xdf\x01\n" +
+	"\fprevious_hop\x18\x05 \x01(\tR\vpreviousHop\"\xe1\x01\n" +
 	"\n" +
 	"AMPMessage\x12)\n" +
 	"\aheaders\x18\x01 \x01(\v2\x0f.amp.AMPHeadersR\aheaders\x12+\n" +
 	"\x11encrypted_payload\x18\x02 \x01(\fR\x10encryptedPayload\x120\n" +
-	"\x14ephemeral_public_key\x18\x03 \x01(\fR\x12ephemeralPublicKey\x12\x1c\n" +
-	"\tsignature\x18\x04 \x01(\fR\tsignature\x12)\n" +
+	"\x14ephemeral_public_key\x18\x03 \x01(\fR\x12ephemeralPublicKey\x12\x1e\n" +
+	"\n" +
+	"signatures\x18\x04 \x03(\fR\n" +
+	"signatures\x12)\n" +
 	"\x10blockchain_proof\x18\x05 \x01(\tR\x0fblockchainProof\"t\n" +
 	"\x10DeliveryResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +

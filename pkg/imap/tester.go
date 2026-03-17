@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -64,7 +65,7 @@ func RunGrammarTestSuite(config GrammarTestConfig) []TestResult {
 		results = append(results, TestResult{Name: "IMAP Capability", Passed: false, Message: err.Error()})
 	} else {
 		// Just noting we got capabilities
-		results = append(results, TestResult{Name: "IMAP Capability", Passed: true, Message: string(len(caps)) + " capabilities advertised"})
+		results = append(results, TestResult{Name: "IMAP Capability", Passed: true, Message: fmt.Sprintf("%d capabilities advertised", len(caps))})
 	}
 
 	return results

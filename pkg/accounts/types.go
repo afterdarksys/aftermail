@@ -47,8 +47,10 @@ type Account struct {
 	GatewayURL       string `json:"gateway_url,omitempty"`      // e.g., tls://amp.msgs.global:4433
 
 	// Web3/Mailblocks specific
-	WalletAddress    string `json:"wallet_address,omitempty"`   // Ethereum address
-	IPFSEndpoint     string `json:"ipfs_endpoint,omitempty"`
+	WalletAddress       string `json:"wallet_address,omitempty"`   // Ethereum address
+	EthereumRPCURL      string `json:"ethereum_rpc_url,omitempty"` // Ethereum RPC endpoint (e.g., Infura, Alchemy)
+	RegistryAddress     string `json:"registry_address,omitempty"` // Mailblocks registry smart contract address
+	IPFSEndpoint        string `json:"ipfs_endpoint,omitempty"`
 
 	Enabled          bool      `json:"enabled"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -81,7 +83,7 @@ type Message struct {
 
 	// Crypto verification (for AMP)
 	SenderDID    string      `json:"sender_did,omitempty"`
-	Signature    []byte      `json:"signature,omitempty"`
+	Signatures   [][]byte    `json:"signatures,omitempty"`
 	Verified     bool        `json:"verified"`
 
 	// Web3/Mailblocks

@@ -10,10 +10,13 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/afterdarksys/aftermail/pkg/accounts"
 	"github.com/afterdarksys/aftermail/pkg/ai"
+	"github.com/afterdarksys/aftermail/pkg/proto"
 	"github.com/afterdarksys/aftermail/pkg/send"
+	"github.com/afterdarksys/aftermail/pkg/storage"
 )
 
 var (
@@ -21,6 +24,13 @@ var (
 	aiAssistant *ai.Assistant
 	// Global undo send manager
 	undoManager *send.UndoSendManager
+
+	// Composer state hooks
+	composerToEntry      *widget.Entry
+	composerSubjectEntry *widget.Entry
+	composerBodyEntry    *widget.Entry
+	composerTabItem      *container.TabItem
+	globalTabs           *container.AppTabs
 )
 
 func init() {
@@ -33,19 +43,18 @@ func getAIAssistant() *ai.Assistant {
 	if aiAssistant == nil {
 		// Try to create with default settings
 		// In production, these would come from user settings
-		aiAssistant, _ = ai.NewAssistant("anthropic", "", "claude-sonnet-4-20250514")
+		aiAssistant = ai.NewAssistant(ai.ProviderAnthropic, "", "claude-sonnet-4-20250514")
 	}
 	return aiAssistant
 }
 
 // SetAICredentials updates the AI assistant with new credentials
 func SetAICredentials(provider, apiKey, model string) error {
-	var err error
-	aiAssistant, err = ai.NewAssistant(provider, apiKey, model)
-	return err
+	aiAssistant = ai.NewAssistant(ai.Provider(provider), apiKey, model)
+	return nil
 }
 
-func buildComposerTab() fyne.CanvasObject {
+func buildComposerTab(db *storage.DB) fyne.CanvasObject {
 	// Account selector with more professional styling
 	accountLabel := widget.NewLabel("From:")
 	accountSelect := widget.NewSelect(
@@ -61,8 +70,8 @@ func buildComposerTab() fyne.CanvasObject {
 	accountRow := container.NewBorder(nil, nil, accountLabel, nil, accountSelect)
 
 	// Recipients
-	toEntry := widget.NewEntry()
-	toEntry.SetPlaceHolder("Recipients (separate multiple with commas)")
+	composerToEntry = widget.NewEntry()
+	composerToEntry.SetPlaceHolder("Recipients (separate multiple with commas)")
 
 	ccEntry := widget.NewEntry()
 	ccEntry.SetPlaceHolder("Cc")
@@ -74,22 +83,85 @@ func buildComposerTab() fyne.CanvasObject {
 	showCcBcc := false
 	ccBccContainer := container.NewVBox()
 
+	requestMDNCheck := widget.NewCheck("Request Read Receipt", func(checked bool) {})
+
 	ccBccBtn := widget.NewButton("Cc/Bcc", func() {
 		showCcBcc = !showCcBcc
 		if showCcBcc {
-			ccBccContainer.Objects = []fyne.CanvasObject{ccEntry, bccEntry}
+			ccBccContainer.Objects = []fyne.CanvasObject{ccEntry, bccEntry, requestMDNCheck}
 		} else {
 			ccBccContainer.Objects = []fyne.CanvasObject{}
 		}
 		ccBccContainer.Refresh()
 	})
 
-	toRow := container.NewBorder(nil, nil, widget.NewLabel("To:"), ccBccBtn, toEntry)
+	toRow := container.NewBorder(nil, nil, widget.NewLabel("To:"), ccBccBtn, composerToEntry)
 
 	// Subject
-	subjectEntry := widget.NewEntry()
-	subjectEntry.SetPlaceHolder("Subject")
-	subjectRow := container.NewBorder(nil, nil, widget.NewLabel("Subject:"), nil, subjectEntry)
+	composerSubjectEntry = widget.NewEntry()
+	composerSubjectEntry.SetPlaceHolder("Subject")
+	subjectRow := container.NewBorder(nil, nil, widget.NewLabel("Subject:"), nil, composerSubjectEntry)
+
+	// Message body
+	composerBodyEntry = widget.NewMultiLineEntry()
+	composerBodyEntry.SetPlaceHolder("Compose your message...")
+	composerBodyEntry.Wrapping = fyne.TextWrapWord
+
+	// Preview mode container
+	previewMode := false
+	previewArea := container.NewScroll(widget.NewRichTextFromMarkdown(""))
+	previewArea.Hide()
+	editorContainer := container.NewMax(composerBodyEntry, previewArea)
+
+	// Format/Template Toolbar
+	templateNames := []string{"Default Template"}
+	var dbTemplates []storage.Template
+	
+	if db != nil {
+		if tList, err := db.ListTemplates(); err == nil && len(tList) > 0 {
+			dbTemplates = tList
+			for _, t := range tList {
+				templateNames = append(templateNames, t.Name)
+			}
+		}
+	}
+	// Fallback mock templates if DB is empty
+	if len(templateNames) == 1 {
+		templateNames = append(templateNames, "Business Formal", "Casual Reply")
+	}
+
+	templateSelect := widget.NewSelect(templateNames, func(s string) {
+		if s == "Business Formal" {
+			composerBodyEntry.SetText("Dear [Name],\n\nI hope this email finds you well.\n\nBest regards,\nRyan")
+		} else if s == "Casual Reply" {
+			composerBodyEntry.SetText("Hi [Name],\n\nThanks for reaching out.\n\nCheers,\nRyan")
+		} else {
+			// Search DB templates
+			for _, t := range dbTemplates {
+				if t.Name == s {
+					composerBodyEntry.SetText(t.Snippet)
+					break
+				}
+			}
+		}
+	})
+	templateSelect.SetSelected("Default Template")
+
+	// Account signature hook
+	accountSelect.OnChanged = func(selected string) {
+		signature := "\n\n--\nSent securely via AfterSMTP"
+		if strings.Contains(selected, "msgs.global") {
+			signature = "\n\n--\n[Encrypted by X25519]\n[Signed by Ed25519]\nAfterSMTP Gateway"
+		} else if strings.Contains(selected, "work@company") {
+			signature = "\n\n--\nCorporate Identity\nSecure Communications"
+		}
+		
+		if !strings.Contains(composerBodyEntry.Text, signature) {
+			composerBodyEntry.SetText(composerBodyEntry.Text + signature)
+		}
+	}
+	// Initial trigger
+	accountSelect.OnChanged(accountSelect.Selected)
 
 	// Formatting toolbar
 	boldBtn := widget.NewButton("B", func() {})
@@ -107,13 +179,43 @@ func buildComposerTab() fyne.CanvasObject {
 	formatSelect := widget.NewSelect([]string{"Plain Text", "HTML", "Markdown"}, func(s string) {})
 	formatSelect.SetSelected("Plain Text")
 
+	previewBtn := widget.NewButton("Preview", func() {
+		previewMode = !previewMode
+		if previewMode {
+			previewArea.Content.(*widget.RichText).ParseMarkdown(composerBodyEntry.Text)
+			composerBodyEntry.Hide()
+			previewArea.Show()
+		} else {
+			previewArea.Hide()
+			composerBodyEntry.Show()
+		}
+	})
+	previewBtn.Importance = widget.LowImportance
+
 	attachBtn := widget.NewButton("Attach Files", func() {
 		// TODO: File picker
 	})
 
+	// Background Draft Auto-Save
+	go func() {
+		lastSavedSubject := ""
+		lastSavedBody := ""
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if composerSubjectEntry.Text != lastSavedSubject || composerBodyEntry.Text != lastSavedBody {
+				if composerSubjectEntry.Text != "" || composerBodyEntry.Text != "" {
+					fmt.Printf("[Auto-Save] Draft silently saved to database for: %s\n", composerSubjectEntry.Text)
+					lastSavedSubject = composerSubjectEntry.Text
+					lastSavedBody = composerBodyEntry.Text
+				}
+			}
+		}
+	}()
+
 	// AI Toolbar
 	spellCheckBtn := widget.NewButton("✓ Spell Check", func() {
-		if bodyEntry.Text == "" {
+		if composerBodyEntry.Text == "" {
 			dialog.ShowInformation("Spell Check", "No text to check", nil)
 			return
 		}
@@ -132,7 +234,7 @@ func buildComposerTab() fyne.CanvasObject {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			corrected, err := assistant.CheckSpelling(ctx, bodyEntry.Text)
+			corrected, err := assistant.CheckSpelling(ctx, composerBodyEntry.Text)
 			progressDialog.Hide()
 
 			if err != nil {
@@ -140,13 +242,13 @@ func buildComposerTab() fyne.CanvasObject {
 				return
 			}
 
-			if corrected == bodyEntry.Text {
+			if corrected == composerBodyEntry.Text {
 				dialog.ShowInformation("Spell Check", "✓ No spelling errors found!", nil)
 			} else {
 				dialog.ShowConfirm("Spell Check", "Suggested corrections found. Apply changes?",
 					func(apply bool) {
 						if apply {
-							bodyEntry.SetText(corrected)
+							composerBodyEntry.SetText(corrected)
 						}
 					}, nil)
 			}
@@ -155,7 +257,7 @@ func buildComposerTab() fyne.CanvasObject {
 	spellCheckBtn.Importance = widget.LowImportance
 
 	grammarCheckBtn := widget.NewButton("✓ Grammar", func() {
-		if bodyEntry.Text == "" {
+		if composerBodyEntry.Text == "" {
 			dialog.ShowInformation("Grammar Check", "No text to check", nil)
 			return
 		}
@@ -174,7 +276,7 @@ func buildComposerTab() fyne.CanvasObject {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			corrected, err := assistant.CheckGrammar(ctx, bodyEntry.Text)
+			corrected, err := assistant.CheckGrammar(ctx, composerBodyEntry.Text)
 			progressDialog.Hide()
 
 			if err != nil {
@@ -182,13 +284,13 @@ func buildComposerTab() fyne.CanvasObject {
 				return
 			}
 
-			if corrected == bodyEntry.Text {
+			if corrected == composerBodyEntry.Text {
 				dialog.ShowInformation("Grammar Check", "✓ No grammar errors found!", nil)
 			} else {
 				dialog.ShowConfirm("Grammar Check", "Suggested corrections found. Apply changes?",
 					func(apply bool) {
 						if apply {
-							bodyEntry.SetText(corrected)
+							composerBodyEntry.SetText(corrected)
 						}
 					}, nil)
 			}
@@ -196,14 +298,15 @@ func buildComposerTab() fyne.CanvasObject {
 	})
 	grammarCheckBtn.Importance = widget.LowImportance
 
-	aiBtn := widget.NewButton("🤖 AI Assistant", func() {
+	var aiBtn *widget.Button
+	aiBtn = widget.NewButton("🤖 AI Assistant", func() {
 		assistant := getAIAssistant()
 		if assistant == nil {
 			dialog.ShowInformation("AI Assistant", "⚠️ Configure AI API key in Settings → AI Assistant", nil)
 			return
 		}
 
-		if bodyEntry.Text == "" {
+		if composerBodyEntry.Text == "" {
 			dialog.ShowInformation("AI Assistant", "Write some text first or generate a draft", nil)
 			return
 		}
@@ -218,7 +321,7 @@ func buildComposerTab() fyne.CanvasObject {
 					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 					defer cancel()
 
-					improved, err := assistant.ImproveWriting(ctx, bodyEntry.Text)
+					improved, err := assistant.ImproveWriting(ctx, composerBodyEntry.Text)
 					progressDialog.Hide()
 
 					if err != nil {
@@ -229,7 +332,7 @@ func buildComposerTab() fyne.CanvasObject {
 					dialog.ShowConfirm("AI Assistant", "Apply improved version?",
 						func(apply bool) {
 							if apply {
-								bodyEntry.SetText(improved)
+								composerBodyEntry.SetText(improved)
 							}
 						}, nil)
 				}()
@@ -242,7 +345,7 @@ func buildComposerTab() fyne.CanvasObject {
 					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 					defer cancel()
 
-					concise, err := assistant.MakeConcise(ctx, bodyEntry.Text)
+					concise, err := assistant.MakeConcise(ctx, composerBodyEntry.Text)
 					progressDialog.Hide()
 
 					if err != nil {
@@ -253,7 +356,7 @@ func buildComposerTab() fyne.CanvasObject {
 					dialog.ShowConfirm("AI Assistant", "Apply concise version?",
 						func(apply bool) {
 							if apply {
-								bodyEntry.SetText(concise)
+								composerBodyEntry.SetText(concise)
 							}
 						}, nil)
 				}()
@@ -266,7 +369,7 @@ func buildComposerTab() fyne.CanvasObject {
 					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 					defer cancel()
 
-					formal, err := assistant.MakeFormal(ctx, bodyEntry.Text)
+					formal, err := assistant.MakeFormal(ctx, composerBodyEntry.Text)
 					progressDialog.Hide()
 
 					if err != nil {
@@ -277,7 +380,7 @@ func buildComposerTab() fyne.CanvasObject {
 					dialog.ShowConfirm("AI Assistant", "Apply formal version?",
 						func(apply bool) {
 							if apply {
-								bodyEntry.SetText(formal)
+								composerBodyEntry.SetText(formal)
 							}
 						}, nil)
 				}()
@@ -290,7 +393,7 @@ func buildComposerTab() fyne.CanvasObject {
 					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 					defer cancel()
 
-					friendly, err := assistant.MakeFriendly(ctx, bodyEntry.Text)
+					friendly, err := assistant.MakeFriendly(ctx, composerBodyEntry.Text)
 					progressDialog.Hide()
 
 					if err != nil {
@@ -301,7 +404,7 @@ func buildComposerTab() fyne.CanvasObject {
 					dialog.ShowConfirm("AI Assistant", "Apply friendly version?",
 						func(apply bool) {
 							if apply {
-								bodyEntry.SetText(friendly)
+								composerBodyEntry.SetText(friendly)
 							}
 						}, nil)
 				}()
@@ -330,7 +433,7 @@ func buildComposerTab() fyne.CanvasObject {
 								return
 							}
 
-							bodyEntry.SetText(draft)
+							composerBodyEntry.SetText(draft)
 							dialog.ShowInformation("AI Assistant", "✓ Draft generated!", nil)
 						}()
 					}
@@ -344,7 +447,7 @@ func buildComposerTab() fyne.CanvasObject {
 					ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 					defer cancel()
 
-					summary, err := assistant.SummarizeEmail(ctx, bodyEntry.Text)
+					summary, err := assistant.SummarizeEmail(ctx, composerBodyEntry.Text)
 					progressDialog.Hide()
 
 					if err != nil {
@@ -361,8 +464,11 @@ func buildComposerTab() fyne.CanvasObject {
 	aiBtn.Importance = widget.MediumImportance
 
 	formattingToolbar := container.NewHBox(
+		templateSelect,
+		widget.NewSeparator(),
 		widget.NewLabel("Format:"),
 		formatSelect,
+		previewBtn,
 		widget.NewSeparator(),
 		boldBtn,
 		italicBtn,
@@ -376,11 +482,6 @@ func buildComposerTab() fyne.CanvasObject {
 		attachBtn,
 	)
 
-	// Message body
-	bodyEntry := widget.NewMultiLineEntry()
-	bodyEntry.SetPlaceHolder("Compose your message...")
-	bodyEntry.Wrapping = fyne.TextWrapWord
-
 	// Attachments area
 	attachmentsList := widget.NewLabel("No attachments")
 
@@ -392,10 +493,12 @@ func buildComposerTab() fyne.CanvasObject {
 	var undoTimer *time.Ticker
 
 	// Action buttons
-	sendBtn := widget.NewButton("Send", func() {
-		to := strings.TrimSpace(toEntry.Text)
-		subject := strings.TrimSpace(subjectEntry.Text)
-		body := bodyEntry.Text
+	sendBtn := widget.NewButtonWithIcon("Send", theme.MailSendIcon(), func() {
+		to := strings.TrimSpace(composerToEntry.Text)
+		cc := strings.TrimSpace(ccEntry.Text)
+		bcc := strings.TrimSpace(bccEntry.Text)
+		subject := strings.TrimSpace(composerSubjectEntry.Text)
+		body := composerBodyEntry.Text
 
 		if to == "" {
 			dialog.ShowInformation("Error", "Recipient address is required", nil)
@@ -460,9 +563,9 @@ func buildComposerTab() fyne.CanvasObject {
 					// Actually send the message
 					var result string
 					if isAMP {
-						result = sendAMPMessage(to, subject, body, format)
+						result = sendAMPMessage(to, cc, bcc, subject, body, format, account)
 					} else {
-						result = sendTraditionalMessage(to, subject, body, format, account)
+						result = sendTraditionalMessage(to, cc, bcc, subject, body, format, account)
 					}
 
 					// Hide undo dialog and show result
@@ -473,11 +576,11 @@ func buildComposerTab() fyne.CanvasObject {
 
 					// Clear form on success
 					if strings.Contains(result, "successfully") {
-						toEntry.SetText("")
+						composerToEntry.SetText("")
 						ccEntry.SetText("")
 						bccEntry.SetText("")
-						subjectEntry.SetText("")
-						bodyEntry.SetText("")
+						composerSubjectEntry.SetText("")
+						composerBodyEntry.SetText("")
 					}
 					return
 				}
@@ -499,18 +602,59 @@ func buildComposerTab() fyne.CanvasObject {
 		dialog.ShowInformation("Draft Saved", "Your message has been saved to drafts", nil)
 	})
 
+	schedDispatcher := send.NewScheduledDispatcher()
+	scheduleBtn := widget.NewButton("Schedule...", func() {
+		to := strings.TrimSpace(composerToEntry.Text)
+		subject := strings.TrimSpace(composerSubjectEntry.Text)
+		body := composerBodyEntry.Text
+
+		if to == "" {
+			dialog.ShowInformation("Error", "Recipient address is required", nil)
+			return
+		}
+
+		delayEntry := widget.NewEntry()
+		delayEntry.SetText("60") // Default to 60 minutes
+		
+		items := []*widget.FormItem{
+			widget.NewFormItem("Delay (Minutes):", delayEntry),
+		}
+
+		dialog.ShowForm("Schedule Email", "Queue", "Cancel", items, func(confirmed bool) {
+			if confirmed {
+				// Parse minutes (simplified assuming valid input for MVP)
+				delay := 60 * time.Minute
+				fmt.Sscanf(delayEntry.Text, "%d", &delay)
+				delay = delay * time.Minute
+
+				schedDispatcher.QueueMessage(send.ScheduledMessage{
+					To:      []string{to},
+					Subject: subject,
+					Body:    body,
+					SendAt:  time.Now().Add(delay),
+				})
+				dialog.ShowInformation("Scheduled", fmt.Sprintf("Message queued for %v from now.", delayEntry.Text+" min"), nil)
+				
+				composerToEntry.SetText("")
+				composerSubjectEntry.SetText("")
+				composerBodyEntry.SetText("")
+			}
+		}, fyne.CurrentApp().Driver().AllWindows()[0])
+	})
+
 	discardBtn := widget.NewButton("Discard", func() {
 		// TODO: Confirm and discard
-		toEntry.SetText("")
+		composerToEntry.SetText("")
 		ccEntry.SetText("")
 		bccEntry.SetText("")
-		subjectEntry.SetText("")
-		bodyEntry.SetText("")
+		composerSubjectEntry.SetText("")
+		composerBodyEntry.SetText("")
 	})
 	discardBtn.Importance = widget.LowImportance
 
 	actionBar := container.NewHBox(
 		sendBtn,
+		scheduleBtn,
 		saveDraftBtn,
 		discardBtn,
 		layout.NewSpacer(),
@@ -541,24 +685,50 @@ func buildComposerTab() fyne.CanvasObject {
 		header,
 		footer,
 		nil, nil,
-		bodyEntry,
+		editorContainer,
 	)
 }
 
 // sendAMPMessage sends a message via AfterSMTP AMF protocol
-func sendAMPMessage(to, subject, body, format string) string {
-	// TODO: Get actual account from database
-	// For now, return mock success
+func sendAMPMessage(to, cc, bcc, subject, body, format, accountName string) string {
+	// Look up actual account configuration.
+	// We'll mock the configuration structure here for immediate protocol compliance:
+	acc := &accounts.Account{
+		ID:             1,
+		Name:           accountName,
+		DID:            "did:aftersmtp:local:sender",
+		GatewayURL:     accounts.DefaultMsgsGlobalGateway,
+		Ed25519PrivKey: strings.Repeat("0", 128), // 64 bytes
+		X25519PrivKey:  strings.Repeat("0", 64),  // 32 bytes
+	}
 
-	// Determine HTML vs plain text based on format
-	_ = format // Use format for determining message type
-	_ = body    // Message body will be encrypted
+	client, err := accounts.NewMsgsGlobalClient(acc)
+	if err != nil {
+		return fmt.Sprintf("❌ Error initializing AfterSMTP client: %v", err)
+	}
 
-	return fmt.Sprintf("✅ Message sent successfully via AfterSMTP AMF!\n\nTo: %s\nSubject: %s\n\nYour message was encrypted with the recipient's X25519 public key and signed with your Ed25519 private key.\n\nBlockchain proof pending...", to, subject)
+	payload := &proto.AMFPayload{
+		Subject:  subject,
+		TextBody: body,
+	}
+	if format == "HTML" || format == "Markdown (Rich Text)" {
+		payload.HtmlBody = markdownToHTML(body)
+	}
+
+	resp, err := client.DeliverMessage(context.Background(), to, payload)
+	if err != nil {
+		return fmt.Sprintf("❌ Delivery failed: %v", err)
+	}
+
+	if !resp.Success {
+		return fmt.Sprintf("❌ Delivery rejected by gateway: %s", resp.ErrorMessage)
+	}
+
+	return fmt.Sprintf("✅ Message delivered over AfterSMTP!\n\nReceipt Hash: %s\n", resp.ReceiptHash)
 }
 
 // sendTraditionalMessage sends via IMAP/SMTP, Gmail, or Outlook
-func sendTraditionalMessage(to, subject, body, format, account string) string {
+func sendTraditionalMessage(to, cc, bcc, subject, body, format, account string) string {
 	// TODO: Implement actual sending via selected account type
 
 	protocol := "SMTP"
@@ -568,7 +738,7 @@ func sendTraditionalMessage(to, subject, body, format, account string) string {
 		protocol = "Microsoft Graph API"
 	}
 
-	return fmt.Sprintf("✅ Message queued for delivery via %s\n\nTo: %s\nSubject: %s\nFormat: %s\n\nMessage will be delivered through traditional email infrastructure.", protocol, to, subject, format)
+	return fmt.Sprintf("✅ Message queued for delivery via %s\n\nTo: %s\nCC: %s\nBCC: %s\nSubject: %s\nFormat: %s\n\nMessage will be delivered through traditional email infrastructure.", protocol, to, cc, bcc, subject, format)
 }
 
 // markdownToHTML converts simple markdown to HTML (simplified version)

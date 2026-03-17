@@ -10,31 +10,28 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/afterdarksys/aftermail/pkg/storage"
 )
 
-type Event struct {
-	Title     string
-	StartTime time.Time
-	EndTime   time.Time
-	Location  string
-	Attendees []string
+// CalendarTab maps calendar logic
+type CalendarTab struct {
+	db         *storage.DB
+	events     []storage.CalendarEvent
+	agendaList *widget.List
+	window     fyne.Window
 }
 
-// buildCalendarTab creates the Calendar UI
-func buildCalendarTab(w fyne.Window) fyne.CanvasObject {
-	// A simple agenda view for the prototype
-	events := []Event{
-		{"Standup", time.Now().Add(time.Hour), time.Now().Add(time.Hour + 30*time.Minute), "Video Call", []string{"Ryan", "Brenda"}},
-		{"Protocol Architecture Review", time.Now().Add(3 * time.Hour), time.Now().Add(4 * time.Hour), "Conference Room A", []string{"Engineering Team"}},
-		{"Lunch with investors", time.Now().Add(24 * time.Hour), time.Now().Add(25 * time.Hour), "Downtown", []string{"VC Partners"}},
+// buildCalendarTab creates the Calendar UI integrated with local DB
+func buildCalendarTab(w fyne.Window, db *storage.DB) fyne.CanvasObject {
+	tab := &CalendarTab{
+		db:     db,
+		window: w,
 	}
 
-	// Month/Week selector header
-	dateLabel := widget.NewLabelWithStyle("Today: "+time.Now().Format("Monday, January 2"), fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	dateLabel := widget.NewLabelWithStyle("Agenda: "+time.Now().Format("Jan 02, 2006"), fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 
-	var agendaList *widget.List
-	
 	header := container.NewHBox(
 		widget.NewButton("<", func() {}),
 		widget.NewButton("Today", func() {}),
@@ -43,28 +40,19 @@ func buildCalendarTab(w fyne.Window) fyne.CanvasObject {
 		dateLabel,
 		layout.NewSpacer(),
 		widget.NewButton("Import iCal", func() {
-			importICal(w, &events, func() { agendaList.Refresh() })
+			tab.importICal()
 		}),
 		widget.NewButton("Export iCal", func() {
-			exportICal(w, events)
+			tab.exportICal()
 		}),
-		widget.NewSelect([]string{"Agenda", "Day", "Week", "Month"}, func(s string) {}),
-		widget.NewButton("New Event", func() {
-			newEvent := Event{
-				Title:     "New Meeting",
-				StartTime: time.Now().Add(time.Hour),
-				EndTime:   time.Now().Add(2 * time.Hour),
-				Location:  "TBD",
-				Attendees: []string{},
-			}
-			events = append(events, newEvent)
-			agendaList.Refresh()
+		widget.NewButtonWithIcon("New Event", theme.ContentAddIcon(), func() {
+			tab.showEventDialog(-1)
 		}),
 	)
 
 	// Agenda List
-	agendaList = widget.NewList(
-		func() int { return len(events) },
+	tab.agendaList = widget.NewList(
+		func() int { return len(tab.events) },
 		func() fyne.CanvasObject {
 			return container.NewVBox(
 				widget.NewLabelWithStyle("Time - Title", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -76,19 +64,23 @@ func buildCalendarTab(w fyne.Window) fyne.CanvasObject {
 			titleLabel := box.Objects[0].(*widget.Label)
 			locLabel := box.Objects[1].(*widget.Label)
 
-			e := events[i]
-			timeRange := fmt.Sprintf("%s - %s", e.StartTime.Format("15:04"), e.EndTime.Format("15:04"))
+			e := tab.events[i]
+			timeRange := fmt.Sprintf("%s - %s", e.StartTime.Format("Jan 02 15:04"), e.EndTime.Format("15:04"))
 			titleLabel.SetText(fmt.Sprintf("%s | %s", timeRange, e.Title))
 			
 			locText := e.Location
-			if len(e.Attendees) > 0 {
-				locText += fmt.Sprintf(" (%d attendees)", len(e.Attendees))
+			if locText == "" {
+				locText = "No Location"
 			}
 			locLabel.SetText(locText)
 		},
 	)
 
-	// Quick event creation sidebar (mock)
+	tab.agendaList.OnSelected = func(id widget.ListItemID) {
+		tab.showEventDialog(tab.events[id].ID)
+		tab.agendaList.UnselectAll()
+	}
+
 	miniCalendar := widget.NewLabel("S M T W T F S\n1 2 3 4 5 6 7\n8 9 10 11 12 13 14\n...")
 	
 	sidebar := container.NewVBox(
@@ -98,16 +90,94 @@ func buildCalendarTab(w fyne.Window) fyne.CanvasObject {
 		widget.NewLabelWithStyle("My Calendars", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewCheck("Personal", nil),
 		widget.NewCheck("Work", nil),
-		widget.NewCheck("Msgs.Global Ops", nil),
+		widget.NewCheck("Web3 / Mailblocks", nil),
 	)
 
-	split := container.NewHSplit(sidebar, agendaList)
-	split.SetOffset(0.2) // Sidebar takes 20%
+	split := container.NewHSplit(sidebar, tab.agendaList)
+	split.SetOffset(0.2) 
 
+	tab.Reload()
 	return container.NewBorder(header, nil, nil, nil, split)
 }
 
-func exportICal(w fyne.Window, events []Event) {
+func (t *CalendarTab) Reload() {
+	if t.db == nil {
+		return
+	}
+	events, err := t.db.ListEvents()
+	if err == nil {
+		t.events = events
+		t.agendaList.Refresh()
+	}
+}
+
+func (t *CalendarTab) showEventDialog(id int64) {
+	var e storage.CalendarEvent
+	isNew := true
+
+	if id > 0 {
+		for _, ev := range t.events {
+			if ev.ID == id {
+				e = ev
+				isNew = false
+				break
+			}
+		}
+	} else {
+		e.Title = "New Meeting"
+		e.StartTime = time.Now().Add(time.Hour)
+		e.EndTime = time.Now().Add(2 * time.Hour)
+	}
+
+	titleEntry := widget.NewEntry()
+	titleEntry.SetText(e.Title)
+	locEntry := widget.NewEntry()
+	locEntry.SetText(e.Location)
+	descEntry := widget.NewMultiLineEntry()
+	descEntry.SetText(e.Description)
+	
+	startEntry := widget.NewEntry()
+	startEntry.SetText(e.StartTime.Format("2006-01-02 15:04"))
+	endEntry := widget.NewEntry()
+	endEntry.SetText(e.EndTime.Format("2006-01-02 15:04"))
+
+	items := []*widget.FormItem{
+		widget.NewFormItem("Title", titleEntry),
+		widget.NewFormItem("Location", locEntry),
+		widget.NewFormItem("Start Time", startEntry),
+		widget.NewFormItem("End Time", endEntry),
+		widget.NewFormItem("Description", descEntry),
+	}
+
+	var d dialog.Dialog
+	saveFunc := func(saved bool) {
+		if !saved {
+			return
+		}
+
+		st, err := time.Parse("2006-01-02 15:04", startEntry.Text)
+		if err == nil { e.StartTime = st }
+		en, err := time.Parse("2006-01-02 15:04", endEntry.Text)
+		if err == nil { e.EndTime = en }
+
+		e.Title = titleEntry.Text
+		e.Location = locEntry.Text
+		e.Description = descEntry.Text
+
+		if isNew {
+			_, _ = t.db.AddEvent(&e)
+		} else {
+			_ = t.db.UpdateEvent(&e)
+		}
+		t.Reload()
+	}
+
+	d = dialog.NewForm("Event Details", "Save", "Cancel", items, saveFunc, t.window)
+	d.Resize(fyne.NewSize(400, 300))
+	d.Show()
+}
+
+func (t *CalendarTab) exportICal() {
 	dialog.ShowFileSave(func(uc fyne.URIWriteCloser, err error) {
 		if err != nil || uc == nil {
 			return
@@ -117,7 +187,7 @@ func exportICal(w fyne.Window, events []Event) {
 		var sb strings.Builder
 		sb.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MeowMail//Client//EN\r\n")
 		
-		for _, e := range events {
+		for _, e := range t.events {
 			sb.WriteString("BEGIN:VEVENT\r\n")
 			sb.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", e.Title))
 			sb.WriteString(fmt.Sprintf("DTSTART:%s\r\n", e.StartTime.UTC().Format("20060102T150405Z")))
@@ -125,18 +195,19 @@ func exportICal(w fyne.Window, events []Event) {
 			if e.Location != "" {
 				sb.WriteString(fmt.Sprintf("LOCATION:%s\r\n", e.Location))
 			}
+			if e.Description != "" {
+				sb.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", strings.ReplaceAll(e.Description, "\n", "\\n")))
+			}
 			sb.WriteString("END:VEVENT\r\n")
 		}
 		
 		sb.WriteString("END:VCALENDAR\r\n")
-		
 		uc.Write([]byte(sb.String()))
-		dialog.ShowInformation("Export Successful", "Saved iCal to "+uc.URI().Name(), w)
-
-	}, w)
+		dialog.ShowInformation("Export Successful", "Saved iCal to "+uc.URI().Name(), t.window)
+	}, t.window)
 }
 
-func importICal(w fyne.Window, events *[]Event, refresh func()) {
+func (t *CalendarTab) importICal() {
 	dialog.ShowFileOpen(func(uc fyne.URIReadCloser, err error) {
 		if err != nil || uc == nil {
 			return
@@ -145,23 +216,22 @@ func importICal(w fyne.Window, events *[]Event, refresh func()) {
 
 		data, err := io.ReadAll(uc)
 		if err != nil {
-			dialog.ShowError(err, w)
+			dialog.ShowError(err, t.window)
 			return
 		}
 
-		// Very basic iCal parser for demonstration purposes
 		content := string(data)
 		lines := strings.Split(content, "\n")
 		
-		var currentEvent *Event
+		var currentEvent *storage.CalendarEvent
 		importCount := 0
 		
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "BEGIN:VEVENT" {
-				currentEvent = &Event{}
+				currentEvent = &storage.CalendarEvent{}
 			} else if line == "END:VEVENT" && currentEvent != nil {
-				*events = append(*events, *currentEvent)
+				t.db.AddEvent(currentEvent)
 				importCount++
 				currentEvent = nil
 			} else if currentEvent != nil {
@@ -170,21 +240,20 @@ func importICal(w fyne.Window, events *[]Event, refresh func()) {
 				} else if strings.HasPrefix(line, "LOCATION:") {
 					currentEvent.Location = strings.TrimPrefix(line, "LOCATION:")
 				} else if strings.HasPrefix(line, "DTSTART:") {
-					t, err := time.Parse("20060102T150405Z", strings.TrimPrefix(line, "DTSTART:"))
+					tm, err := time.Parse("20060102T150405Z", strings.TrimPrefix(line, "DTSTART:"))
 					if err == nil {
-						currentEvent.StartTime = t
+						currentEvent.StartTime = tm
 					}
 				} else if strings.HasPrefix(line, "DTEND:") {
-					t, err := time.Parse("20060102T150405Z", strings.TrimPrefix(line, "DTEND:"))
+					tm, err := time.Parse("20060102T150405Z", strings.TrimPrefix(line, "DTEND:"))
 					if err == nil {
-						currentEvent.EndTime = t
+						currentEvent.EndTime = tm
 					}
 				}
 			}
 		}
 
-		refresh()
-		dialog.ShowInformation("Import Successful", fmt.Sprintf("Imported %d events from %s", importCount, uc.URI().Name()), w)
-
-	}, w)
+		t.Reload()
+		dialog.ShowInformation("Import Successful", fmt.Sprintf("Imported %d events from %s", importCount, uc.URI().Name()), t.window)
+	}, t.window)
 }

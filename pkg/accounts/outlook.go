@@ -27,7 +27,7 @@ type OutlookClient struct {
 }
 
 // NewOutlookClient creates a new Microsoft Graph API client
-func NewOutlookClient(account *Account) (*OutlookClient, error) {
+func NewOutlookClient(account *Account, onTokenRefresh func(*oauth2.Token)) (*OutlookClient, error) {
 	config := &oauth2.Config{
 		ClientID:     account.OAuthClientID,
 		ClientSecret: account.OAuthClientSecret,
@@ -46,7 +46,10 @@ func NewOutlookClient(account *Account) (*OutlookClient, error) {
 		Expiry:       account.OAuthExpiry,
 	}
 
-	client := config.Client(context.Background(), token)
+	baseSource := config.TokenSource(context.Background(), token)
+	notifyingSource := NewNotifyTokenSource(baseSource, token, onTokenRefresh)
+
+	client := oauth2.NewClient(context.Background(), notifyingSource)
 
 	return &OutlookClient{
 		account: account,

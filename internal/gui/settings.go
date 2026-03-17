@@ -7,6 +7,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/afterdarksys/aftermail/pkg/accounts"
 )
 
 // The predefined themes
@@ -65,9 +67,9 @@ func buildGeneralTab(a fyne.App) fyne.CanvasObject {
 		case "OS Theme":
 			a.Settings().SetTheme(theme.DefaultTheme())
 		case "Dark":
-			a.Settings().SetTheme(theme.DarkTheme())
+			a.Settings().SetTheme(NewAfterMailTheme(true))
 		case "Light":
-			a.Settings().SetTheme(theme.LightTheme())
+			a.Settings().SetTheme(NewAfterMailTheme(false))
 		case "Neon":
 			a.Settings().SetTheme(&neonTheme{})
 		case "Custom":
@@ -132,11 +134,6 @@ func buildAITab() fyne.CanvasObject {
 	saveBtn.Importance = widget.HighImportance
 
 	testBtn := widget.NewButton("Test Connection", func() {
-		provider := "anthropic"
-		if providerSelect.Selected == "OpenRouter" {
-			provider = "openrouter"
-		}
-
 		apiKey := apiKeyEntry.Text
 		model := modelEntry.Text
 		if model == "" {
@@ -227,12 +224,18 @@ func buildAccountsTab() fyne.CanvasObject {
 func buildAdvancedTab() fyne.CanvasObject {
 	debugCheck := widget.NewCheck("Enable debug logging", nil)
 
+	robustParsingCheck := widget.NewCheck("Enable robust MIME/header parsing (Heuristic Recovery)", func(checked bool) {
+		accounts.RobustParsingEnabled = checked
+	})
+	robustParsingCheck.SetChecked(accounts.RobustParsingEnabled)
+
 	dataPathEntry := widget.NewEntry()
 	dataPathEntry.SetText("~/.aftermail")
 
 	form := widget.NewForm(
 		widget.NewFormItem("Data Directory", dataPathEntry),
 		widget.NewFormItem("", debugCheck),
+		widget.NewFormItem("", robustParsingCheck),
 	)
 
 	exportBtn := widget.NewButton("Export Data", func() {})

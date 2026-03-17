@@ -56,6 +56,7 @@ func (m *MailblocksClient) StakeForEmail(ctx context.Context, messageID string, 
 	if err != nil {
 		return "", err
 	}
+	_ = auth
 
 	// TODO: Call contract stake method
 	// This requires the contract binding

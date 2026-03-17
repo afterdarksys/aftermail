@@ -39,8 +39,8 @@ message AMPMessage {
     // Ephemeral public key used by the sender for this specific encryption
     bytes ephemeral_public_key = 3;
     
-    // Ed25519 signature of the headers + encrypted_payload, signed by sender_did's private key
-    bytes signature = 4; 
+    // Ed25519 signatures of the headers + encrypted_payload, signed by sender_did's private key (and optionally others)
+    repeated bytes signatures = 4; 
     
     // Optional blockchain proof or transaction ID anchoring this message's transit
     string blockchain_proof = 5; 

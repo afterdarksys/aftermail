@@ -102,10 +102,6 @@ func (w *EthereumWallet) ExportPrivateKeyHex() string {
 func (w *EthereumWallet) ExportToKeystore(keystorePath, password string) error {
 	ks := keystore.NewKeyStore(keystorePath, keystore.StandardScryptN, keystore.StandardScryptP)
 
-	account := accounts.Account{
-		Address: w.Address,
-	}
-
 	_, err := ks.ImportECDSA(w.PrivateKey, password)
 	if err != nil {
 		return fmt.Errorf("failed to import to keystore: %w", err)

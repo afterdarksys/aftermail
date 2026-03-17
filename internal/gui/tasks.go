@@ -5,34 +5,38 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/afterdarksys/aftermail/pkg/storage"
 )
 
-type Task struct {
-	ID          int
-	Title       string
-	Description string
-	DueDate     time.Time
-	IsCompleted bool
+// TasksTab holds the state for the Tasks UI
+type TasksTab struct {
+	db       *storage.DB
+	tasks    []storage.Task
+	list     *widget.List
+	selected int64
+	
+	titleEntry   *widget.Entry
+	descEntry    *widget.Entry
+	dueDateEntry *widget.Entry
+	hideDone     bool
 }
 
-// buildTasksTab creates the Tasks UI
-func buildTasksTab() fyne.CanvasObject {
-	tasks := []Task{
-		{1, "Review AfterSMTP Security Audit", "Check the latest report for any regressions.", time.Now().Add(24 * time.Hour), false},
-		{2, "Draft Mailblocks Whitepaper", "Include section on proof of stake spam prevention.", time.Now().Add(48 * time.Hour), false},
-		{3, "Update DNS records", "Update SPF and DKIM for the new msgs.global servers.", time.Now().Add(-2 * time.Hour), true},
+// buildTasksTab creates the Tasks UI integrated with SQLite
+func buildTasksTab(db *storage.DB) fyne.CanvasObject {
+	t := &TasksTab{
+		db:       db,
+		hideDone: false,
+		selected: -1,
 	}
 
-	var list *widget.List
-	var selectedIndex int = -1
+	t.titleEntry = widget.NewEntry()
+	t.descEntry = widget.NewMultiLineEntry()
+	t.dueDateEntry = widget.NewEntry()
 
-	titleEntry := widget.NewEntry()
-	descEntry := widget.NewMultiLineEntry()
-	dueDateEntry := widget.NewEntry() // Simple string for now
-
-	list = widget.NewList(
-		func() int { return len(tasks) },
+	t.list = widget.NewList(
+		func() int { return len(t.tasks) },
 		func() fyne.CanvasObject {
 			return container.NewHBox(
 				widget.NewCheck("", nil),
@@ -44,92 +48,134 @@ func buildTasksTab() fyne.CanvasObject {
 			check := box.Objects[0].(*widget.Check)
 			label := box.Objects[1].(*widget.Label)
 
-			t := &tasks[i]
-			check.SetChecked(t.IsCompleted)
+			task := t.tasks[i]
+			check.SetChecked(task.IsCompleted)
+			
+			// Handle completion toggle
 			check.OnChanged = func(checked bool) {
-				tasks[i].IsCompleted = checked
-				list.Refresh()
+				task.IsCompleted = checked
+				if t.db != nil {
+					_ = t.db.UpdateTask(&task)
+				}
+				t.Reload()
 			}
 
-			// Strike out if completed or add a tag if overdue
-			text := t.Title
-			if t.IsCompleted {
+			// Format title
+			text := task.Title
+			if task.IsCompleted {
 				text = "✓ " + text
-			} else if t.DueDate.Before(time.Now()) {
+			} else if !task.DueDate.IsZero() && task.DueDate.Before(time.Now()) {
 				text = "[OVERDUE] " + text
 			}
 			label.SetText(text)
 		},
 	)
 
+	t.list.OnSelected = func(id widget.ListItemID) {
+		t.selected = t.tasks[id].ID
+		selected := t.tasks[id]
+		t.titleEntry.SetText(selected.Title)
+		t.descEntry.SetText(selected.Description)
+		if !selected.DueDate.IsZero() {
+			t.dueDateEntry.SetText(selected.DueDate.Format("2006-01-02 15:04"))
+		} else {
+			t.dueDateEntry.SetText("")
+		}
+	}
+
 	detailsForm := widget.NewForm(
-		widget.NewFormItem("Title", titleEntry),
-		widget.NewFormItem("Due Date", dueDateEntry),
+		widget.NewFormItem("Title", t.titleEntry),
+		widget.NewFormItem("Due Date", t.dueDateEntry),
 	)
 
-	saveBtn := widget.NewButton("Save Task", func() {
-		dt, err := time.Parse("2006-01-02 15:04", dueDateEntry.Text)
-		if err != nil {
-			dt = time.Now()
+	saveBtn := widget.NewButtonWithIcon("Save Task", theme.DocumentSaveIcon(), func() {
+		var dt time.Time
+		if t.dueDateEntry.Text != "" {
+			parsed, err := time.Parse("2006-01-02 15:04", t.dueDateEntry.Text)
+			if err == nil {
+				dt = parsed
+			}
 		}
 
-		task := Task{
-			ID:          len(tasks) + 1,
-			Title:       titleEntry.Text,
-			Description: descEntry.Text,
+		task := storage.Task{
+			ID:          t.selected,
+			Title:       t.titleEntry.Text,
+			Description: t.descEntry.Text,
 			DueDate:     dt,
-			IsCompleted: false, // Default to incomplete on edit for simplicity
+			IsCompleted: false,
 		}
 
-		if selectedIndex >= 0 {
-			task.ID = tasks[selectedIndex].ID
-			task.IsCompleted = tasks[selectedIndex].IsCompleted
-			tasks[selectedIndex] = task
+		if t.selected > 0 {
+			// Find existing completion state
+			for _, existing := range t.tasks {
+				if existing.ID == t.selected {
+					task.IsCompleted = existing.IsCompleted
+					break
+				}
+			}
+			_ = t.db.UpdateTask(&task)
 		} else {
-			tasks = append(tasks, task)
-			selectedIndex = len(tasks) - 1
+			id, _ := t.db.AddTask(&task)
+			t.selected = id
 		}
-		list.Refresh()
-		list.Select(widget.ListItemID(selectedIndex))
+		t.Reload()
 	})
+
+	deleteBtn := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), func() {
+		if t.selected > 0 {
+			_ = t.db.DeleteTask(t.selected)
+			t.clearForm()
+			t.Reload()
+		}
+	})
+
+	actionsRow := container.NewHBox(saveBtn, deleteBtn)
 
 	rightPane := container.NewBorder(
 		widget.NewLabelWithStyle("Task Details", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		saveBtn,
+		actionsRow,
 		nil, nil,
-		container.NewVScroll(container.NewVBox(detailsForm, widget.NewLabel("Description:"), descEntry)),
+		container.NewVScroll(container.NewVBox(detailsForm, widget.NewLabel("Description:"), t.descEntry)),
 	)
 
-	list.OnSelected = func(id widget.ListItemID) {
-		selectedIndex = int(id)
-		selected := tasks[id]
-		titleEntry.SetText(selected.Title)
-		descEntry.SetText(selected.Description)
-		dueDateEntry.SetText(selected.DueDate.Format("2006-01-02 15:04"))
-	}
-
-	if len(tasks) > 0 {
-		list.Select(0)
-	}
+	hideDoneCheck := widget.NewCheck("Hide Completed", func(checked bool) {
+		t.hideDone = checked
+		t.Reload()
+	})
+	hideDoneCheck.SetChecked(t.hideDone)
 
 	header := container.NewHBox(
-		widget.NewButton("Add Task", func() {
-			selectedIndex = -1
-			titleEntry.SetText("")
-			descEntry.SetText("")
-			dueDateEntry.SetText(time.Now().Format("2006-01-02 15:04"))
-			titleEntry.SetPlaceHolder("New Task Title")
-			list.UnselectAll()
+		widget.NewButtonWithIcon("Add Task", theme.ContentAddIcon(), func() {
+			t.clearForm()
+			t.list.UnselectAll()
 		}),
-		widget.NewCheck("Hide Completed", func(checked bool) {
-			// Filtering logic would apply to the list data model
-		}),
+		hideDoneCheck,
 	)
 
-	leftPane := container.NewBorder(header, nil, nil, nil, list)
+	leftPane := container.NewBorder(header, nil, nil, nil, t.list)
 
 	split := container.NewHSplit(leftPane, rightPane)
 	split.SetOffset(0.4)
 
+	t.Reload()
 	return split
+}
+
+func (t *TasksTab) clearForm() {
+	t.selected = -1
+	t.titleEntry.SetText("")
+	t.descEntry.SetText("")
+	t.dueDateEntry.SetText(time.Now().Add(24 * time.Hour).Format("2006-01-02 15:04"))
+	t.titleEntry.SetPlaceHolder("New Task Title")
+}
+
+func (t *TasksTab) Reload() {
+	if t.db == nil {
+		return
+	}
+	tasks, err := t.db.ListTasks(t.hideDone)
+	if err == nil {
+		t.tasks = tasks
+		t.list.Refresh()
+	}
 }

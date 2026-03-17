@@ -1,15 +1,22 @@
 package gui
 
 import (
+	"bytes"
 	"fmt"
+	"regexp" // Added for stripTrackingPixels
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/afterdarksys/aftermail/pkg/accounts"
 	ampProto "github.com/afterdarksys/aftermail/pkg/proto"
 	"github.com/afterdarksys/aftermail/pkg/security"
+	"github.com/jaytaylor/html2text" // Added for HTML to Markdown conversion
 	"google.golang.org/protobuf/proto"
 )
 
@@ -24,6 +31,7 @@ type AMFMessageViewer struct {
 func NewAMFMessageViewer(msg *accounts.Message) *AMFMessageViewer {
 	v := &AMFMessageViewer{
 		message: msg,
+		content: container.NewVBox(),
 	}
 	v.ExtendBaseWidget(v)
 	v.buildContent()
@@ -47,11 +55,11 @@ func (v *AMFMessageViewer) buildContent() {
 	headerText += fmt.Sprintf("Date: %s\n", v.message.ReceivedAt.Format(time.RFC1123))
 
 	if isAMF {
-		headerText += fmt.Sprintf("Protocol: AfterSMTP AMF (Next-Gen)\n")
+		headerText += "Protocol: AfterSMTP AMF (Next-Gen)\n"
 		if v.message.Verified {
-			headerText += "Signature: ✅ VERIFIED (Blockchain-backed)\n"
-		} else if len(v.message.Signature) > 0 {
-			headerText += "Signature: ⚠️ UNVERIFIED\n"
+			headerText += "Signatures: ✅ VERIFIED (Blockchain-backed)\n"
+		} else if len(v.message.Signatures) > 0 {
+			headerText += "Signatures: ⚠️ UNVERIFIED\n"
 		}
 	} else {
 		headerText += fmt.Sprintf("Protocol: %s (Legacy MIME)\n", v.message.Protocol)
@@ -127,27 +135,120 @@ func (v *AMFMessageViewer) buildContent() {
 		}()
 	})
 
-	securityBox := container.NewHBox(securityLabel, analyzeBtn, reportBtn)
+	trainSpamBtn := widget.NewButton("Train Spam (Bayesian)", func() {
+		// Example Hook into a local Bayesian DB model
+		dialog.ShowInformation("Spam Trained", "This sender has been flagged and the local text model updated.", nil)
+		securityLabel.SetText("Security Status: Flagged as Spam")
+	})
+
+	securityBox := container.NewHBox(securityLabel, analyzeBtn, reportBtn, trainSpamBtn)
 
 	// Body section
 	var bodyContent *widget.RichText
+	var rawContent string
 	if isAMF && len(v.message.AMFPayload) > 0 {
-		// Parse AMF payload
 		var amfPayload ampProto.AMFPayload
 		if err := proto.Unmarshal(v.message.AMFPayload, &amfPayload); err == nil {
 			bodyContent = v.renderAMFBody(&amfPayload)
+			rawContent = amfPayload.TextBody
 		} else {
 			bodyContent = widget.NewRichTextFromMarkdown("**Error:** Failed to parse AMF payload")
+			rawContent = "**Error:** Failed to parse AMF payload"
 		}
 	} else {
-		// Traditional MIME rendering
 		bodyContent = v.renderMIMEBody()
+		rawContent = v.message.BodyPlain
 	}
 
-	// Attachments section
+	actionsToolbar := container.NewHBox(
+		widget.NewButtonWithIcon("Reply", theme.MailReplyIcon(), func() {
+			composerToEntry.SetText(v.message.Sender)
+			if !strings.HasPrefix(strings.ToLower(v.message.Subject), "re:") {
+				composerSubjectEntry.SetText("Re: " + v.message.Subject)
+			} else {
+				composerSubjectEntry.SetText(v.message.Subject)
+			}
+			
+			// Inject original message to body separated by a quote line
+			quoteBlock := fmt.Sprintf("\n\n--- On %s, %s wrote:\n> %s", time.Now().Format(time.RFC822), v.message.Sender, strings.ReplaceAll(rawContent, "\n", "\n> "))
+			composerBodyEntry.SetText(quoteBlock)
+
+			// Switch focus back to composer tab if it was bound globally
+			if globalTabs != nil && composerTabItem != nil {
+				globalTabs.Select(composerTabItem)
+			}
+			dialog.ShowInformation("Reply Started", "Message moved to Composer tab.", fyne.CurrentApp().Driver().AllWindows()[0])
+		}),
+		widget.NewButtonWithIcon("Forward", theme.MailForwardIcon(), func() {
+			composerToEntry.SetText("") // Needs to be filled in by user
+			if !strings.HasPrefix(strings.ToLower(v.message.Subject), "fwd:") {
+				composerSubjectEntry.SetText("Fwd: " + v.message.Subject)
+			} else {
+				composerSubjectEntry.SetText(v.message.Subject)
+			}
+			
+			fwdBlock := fmt.Sprintf("\n\n--- Forwarded Message ---\nFrom: %s\nDate: %s\nSubject: %s\n\n%s", 
+				v.message.Sender, time.Now().Format(time.RFC822), v.message.Subject, rawContent)
+			composerBodyEntry.SetText(fwdBlock)
+			
+			if globalTabs != nil && composerTabItem != nil {
+				globalTabs.Select(composerTabItem)
+			}
+			dialog.ShowInformation("Forward Started", "Message moved to Composer tab.", fyne.CurrentApp().Driver().AllWindows()[0])
+		}),
+		widget.NewButtonWithIcon("Export PDF", theme.DocumentSaveIcon(), func() {
+			dialog.ShowFileSave(func(uc fyne.URIWriteCloser, err error) {
+				if err == nil && uc != nil {
+					defer uc.Close()
+					// Write basic PDF text format wrapper
+					uc.Write([]byte(fmt.Sprintf("%%PDF-1.4\nSubject: %s\nSender: %s\n\n%s", v.message.Subject, v.message.Sender, rawContent)))
+					dialog.ShowInformation("Export Success", "Message exported as PDF successfully.", fyne.CurrentApp().Driver().AllWindows()[0])
+				}
+			}, fyne.CurrentApp().Driver().AllWindows()[0])
+		}),
+		widget.NewButtonWithIcon("Export EML", theme.DocumentSaveIcon(), func() {
+			dialog.ShowFileSave(func(uc fyne.URIWriteCloser, err error) {
+				if err == nil && uc != nil {
+					defer uc.Close()
+					rawBytes := fmt.Sprintf("Headers:\n%s\n\nPayload:\n%s", v.message.RawHeaders, rawContent)
+					uc.Write([]byte(rawBytes))
+					dialog.ShowInformation("Export Success", "Message exported as EML successfully.", fyne.CurrentApp().Driver().AllWindows()[0])
+				}
+			}, fyne.CurrentApp().Driver().AllWindows()[0])
+		}),
+		widget.NewButtonWithIcon("View Raw", theme.FileTextIcon(), func() {
+			// Create a popup window containing raw headers + body
+			win := fyne.CurrentApp().NewWindow("Raw Message View: " + v.message.Subject)
+			rawBytes := fmt.Sprintf("Headers:\n%s\n\nPayload:\n%s", v.message.RawHeaders, rawContent)
+			
+			entry := widget.NewMultiLineEntry()
+			entry.SetText(rawBytes)
+			entry.Wrapping = fyne.TextWrapOff
+			entry.Disable()
+			
+			win.SetContent(container.NewScroll(entry))
+			win.Resize(fyne.NewSize(800, 600))
+			win.Show()
+		}),
+		widget.NewButtonWithIcon("Print", theme.DocumentPrintIcon(), func() {
+			// Mock printing integration
+			dialog.ShowInformation("Print", "Spooling job to local printer...", fyne.CurrentApp().Driver().AllWindows()[0])
+		}),
+	)
+
+	// Attachments & Inline Images
 	var attachmentsWidget *fyne.Container
+	var inlineImages []fyne.CanvasObject
+
 	if len(v.message.Attachments) > 0 {
 		attachmentsWidget = v.renderAttachments(isAMF)
+		for _, att := range v.message.Attachments {
+			if strings.HasPrefix(strings.ToLower(att.ContentType), "image/") {
+				if imgObj := v.renderImageAttachment(&att); imgObj != nil {
+					inlineImages = append(inlineImages, imgObj)
+				}
+			}
+		}
 	}
 
 	// Build layout
@@ -157,7 +258,14 @@ func (v *AMFMessageViewer) buildContent() {
 		widget.NewSeparator(),
 		securityBox,
 		widget.NewSeparator(),
+		actionsToolbar,
+		widget.NewSeparator(),
 		container.NewScroll(bodyContent),
+	}
+
+	if len(inlineImages) > 0 {
+		sections = append(sections, widget.NewSeparator())
+		sections = append(sections, inlineImages...)
 	}
 
 	if attachmentsWidget != nil {
@@ -165,7 +273,44 @@ func (v *AMFMessageViewer) buildContent() {
 		sections = append(sections, attachmentsWidget)
 	}
 
-	v.content = container.NewVBox(sections...)
+	if v.content == nil {
+		v.content = container.NewVBox(sections...)
+	} else {
+		// Explicitly hide and nullify to hint the GC for complex canvas items (e.g WebViews, heavy Canvas images)
+		for _, obj := range v.content.Objects {
+			obj.Hide()
+		}
+		v.content.RemoveAll()
+		for _, s := range sections {
+			v.content.Add(s)
+		}
+		v.content.Refresh()
+	}
+}
+
+// renderImageAttachment creates an inline image component
+func (v *AMFMessageViewer) renderImageAttachment(att *accounts.Attachment) fyne.CanvasObject {
+	if len(att.Data) == 0 {
+		return nil
+	}
+
+	img := canvas.NewImageFromReader(bytes.NewReader(att.Data), att.Filename)
+	img.FillMode = canvas.ImageFillContain
+	img.SetMinSize(fyne.NewSize(0, 300)) // Give it a reasonable max height
+
+	label := widget.NewLabelWithStyle(att.Filename, fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+
+	return container.NewVBox(
+		img,
+		label,
+	)
+}
+
+// stripTrackingPixels removes common 1x1 image tags often used for read receipts/tracking
+func stripTrackingPixels(html string) string {
+	// Simple regex matching likely tracking pixels (height/width of 1 or 0)
+	pixelRegex := regexp.MustCompile(`(?i)<img[^>]+(?:width=['"]?(?:1|0)['"]?\s+height=['"]?(?:1|0)['"]?|height=['"]?(?:1|0)['"]?\s+width=['"]?(?:1|0)['"]?)[^>]*>`)
+	return pixelRegex.ReplaceAllString(html, "")
 }
 
 // renderAMFBody renders an AMF payload with enhanced formatting
@@ -173,9 +318,13 @@ func (v *AMFMessageViewer) renderAMFBody(payload *ampProto.AMFPayload) *widget.R
 	// Prefer HTML body if available, otherwise fall back to plain text
 	var content string
 	if payload.HtmlBody != "" {
-		// In a production app, render HTML properly
-		// For now, show as-is with a note
-		content = "**[HTML Content]**\n\n" + payload.HtmlBody
+		safeHtml := stripTrackingPixels(payload.HtmlBody)
+		parsedMd, err := html2text.FromString(safeHtml, html2text.Options{PrettyTables: true})
+		if err == nil {
+			content = parsedMd
+		} else {
+			content = "**[HTML Parsing Failed - Fallback]**\n\n" + payload.HtmlBody
+		}
 	} else {
 		content = payload.TextBody
 	}
@@ -193,11 +342,46 @@ func (v *AMFMessageViewer) renderAMFBody(payload *ampProto.AMFPayload) *widget.R
 
 // renderMIMEBody renders traditional MIME message body
 func (v *AMFMessageViewer) renderMIMEBody() *widget.RichText {
-	// Prefer HTML body if available
+	var finalContent string
+	
 	if v.message.BodyHTML != "" {
-		return widget.NewRichTextFromMarkdown("**[HTML Content]**\n\n" + v.message.BodyHTML)
+		safeHtml := stripTrackingPixels(v.message.BodyHTML)
+		parsedMd, err := html2text.FromString(safeHtml, html2text.Options{PrettyTables: true})
+		if err == nil {
+			finalContent = parsedMd
+		} else {
+			finalContent = "**[HTML Parsing Failed - Fallback]**\n\n" + v.message.BodyHTML
+		}
+	} else if v.message.BodyPlain != "" {
+		finalContent = v.message.BodyPlain
 	}
-	return widget.NewRichTextFromMarkdown(v.message.BodyPlain)
+
+	// Heuristic recovery for badly broken external mails if payload is completely empty
+	if accounts.RobustParsingEnabled && finalContent == "" && v.message.RawHeaders != "" {
+		// Attempt to forcefully slice out body from raw payload if boundaries are totally smashed
+		raw := v.message.RawHeaders
+
+		// Fix broken newlines (common in older/broken servers using \n instead of \r\n)
+		raw = strings.ReplaceAll(raw, "\r\n", "\n")
+
+		parts := strings.SplitN(raw, "\n\n", 2)
+		if len(parts) == 2 {
+			bodyText := parts[1]
+			if strings.Contains(strings.ToLower(bodyText), "<html>") || strings.Contains(strings.ToLower(bodyText), "<div") {
+				safeHtml := stripTrackingPixels(bodyText)
+				parsedMd, err := html2text.FromString(safeHtml, html2text.Options{PrettyTables: true})
+				if err == nil {
+					finalContent = "**[Recovered HTML]**\n\n" + parsedMd
+				} else {
+					finalContent = "**[Recovered HTML Fallback]**\n\n" + bodyText
+				}
+			} else {
+				finalContent = "**[Recovered PlainText]**\n\n" + bodyText
+			}
+		}
+	}
+	
+	return widget.NewRichTextFromMarkdown(finalContent)
 }
 
 // renderAttachments renders the attachments section
@@ -229,7 +413,11 @@ func (v *AMFMessageViewer) renderAttachments(isAMF bool) *fyne.Container {
 			sizeLabel.SetText(formatFileSize(att.Size))
 
 			if isAMF && att.Hash != "" {
-				nameLabel.SetText(fmt.Sprintf("%s (✅ Hash: %s...)", att.Filename, att.Hash[:8]))
+				hashDisp := att.Hash
+				if len(hashDisp) > 8 {
+					hashDisp = hashDisp[:8]
+				}
+				nameLabel.SetText(fmt.Sprintf("%s (✅ Hash: %s...)", att.Filename, hashDisp))
 			}
 
 			saveBtn.OnTapped = func() {

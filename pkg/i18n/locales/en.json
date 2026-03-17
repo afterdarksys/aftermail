@@ -1,0 +1,9 @@
+{
+    "app_title": "ADS Mail - Professional Email Client",
+    "menu_file": "File",
+    "menu_new_message": "New Message",
+    "menu_settings": "Settings",
+    "menu_quit": "Quit",
+    "btn_send": "Send",
+    "btn_reply": "Reply"
+}

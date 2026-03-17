@@ -27,7 +27,7 @@ type GmailClient struct {
 }
 
 // NewGmailClient creates a new Gmail API client
-func NewGmailClient(account *Account) (*GmailClient, error) {
+func NewGmailClient(account *Account, onTokenRefresh func(*oauth2.Token)) (*GmailClient, error) {
 	config := &oauth2.Config{
 		ClientID:     account.OAuthClientID,
 		ClientSecret: account.OAuthClientSecret,
@@ -46,7 +46,10 @@ func NewGmailClient(account *Account) (*GmailClient, error) {
 		Expiry:       account.OAuthExpiry,
 	}
 
-	client := config.Client(context.Background(), token)
+	baseSource := config.TokenSource(context.Background(), token)
+	notifyingSource := NewNotifyTokenSource(baseSource, token, onTokenRefresh)
+
+	client := oauth2.NewClient(context.Background(), notifyingSource)
 
 	return &GmailClient{
 		account: account,

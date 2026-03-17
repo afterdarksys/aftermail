@@ -2,27 +2,122 @@ package gui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+	"github.com/afterdarksys/aftermail/pkg/i18n"
+	"github.com/afterdarksys/aftermail/pkg/plugins"
+	"github.com/afterdarksys/aftermail/pkg/storage"
 	"github.com/afterdarksys/aftermail/pkg/tlsconn"
 )
 
 // StartGUI initializes and shows the Fyne application.
 func StartGUI() {
 	a := app.New()
-	w := a.NewWindow("ADS Mail - Professional Email Client")
+	
+	// Initialize i18n
+	if err := i18n.Init("en"); err != nil {
+		fmt.Printf("[Warning] Failed to initialize i18n: %v\n", err)
+	}
 
+	// Apply custom AfterMail theme (Dark Mode by default)
+	isDark := true
+	a.Settings().SetTheme(NewAfterMailTheme(isDark))
+
+	w := a.NewWindow(i18n.T("app_title", "ADS Mail - Professional Email Client"))
 	w.Resize(fyne.NewSize(1400, 900))
+
+	// Global Keyboard Shortcuts
+	ctrlF := &desktop.CustomShortcut{KeyName: fyne.KeyF, Modifier: fyne.KeyModifierShortcutDefault}
+	w.Canvas().AddShortcut(ctrlF, func(shortcut fyne.Shortcut) {
+		// In a real implementation this focuses the Search bar
+		dialog.ShowInformation("Search", "Find shortcut triggered (Ctrl+F/Cmd+F)", w)
+	})
+	
+	ctrlN := &desktop.CustomShortcut{KeyName: fyne.KeyN, Modifier: fyne.KeyModifierShortcutDefault}
+	w.Canvas().AddShortcut(ctrlN, func(shortcut fyne.Shortcut) {
+		dialog.ShowInformation("New Message", "New Message shortcut triggered (Ctrl+N/Cmd+N)", w)
+	})
+
+	// Global Network Polling Hook (Offline Mode)
+	isOffline := false
+	stopNetworkPolling := make(chan struct{})
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				// Mock network condition ping (pseudo offline-check)
+				// True implementations would dial 1.1.1.1:53 or default metrics endpoint.
+				_, err := os.Stat("/tmp/force_offline")
+				currentlyOffline := err == nil
+				if currentlyOffline != isOffline {
+					isOffline = currentlyOffline
+					if isOffline {
+						w.SetTitle(i18n.T("app_title_offline", "ADS Mail - Professional Email Client [OFFLINE MODE]"))
+					} else {
+						w.SetTitle(i18n.T("app_title", "ADS Mail - Professional Email Client"))
+					}
+				}
+			case <-stopNetworkPolling:
+				return
+			}
+		}
+	}()
+
+	// Initialize Plugin Manager
+	homeDir, _ := os.UserHomeDir()
+	pluginDir := filepath.Join(homeDir, ".aftermail", "plugins")
+	_ = os.MkdirAll(pluginDir, 0755)
+
+	// Initialize Local SQLite Storage
+	dbPath := filepath.Join(homeDir, ".aftermail", "aftermail.db")
+	db, err := storage.InitDB(dbPath)
+	if err != nil {
+		fmt.Printf("[Error] Failed to initialize local storage: %v\n", err)
+	}
+
+	pluginManager := plugins.NewManager(pluginDir)
+	if err := pluginManager.LoadPlugins(); err != nil {
+		fmt.Printf("[Warning] Plugin loader error: %v\n", err)
+	}
+
+	// Clean up resources when window closes
+	w.SetOnClosed(func() {
+		close(stopNetworkPolling)
+		pluginManager.ShutdownAll()
+		if db != nil {
+			db.Close()
+		}
+	})
 
 	// Menu bar
 	fileMenu := fyne.NewMenu("File",
 		fyne.NewMenuItem("New Message", func() {
 			// TODO: Open new message window
+		}),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Import .mbox", func() {
+			ImportMbox(w)
+		}),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Backup Database", func() {
+			BackupDatabase(w)
+		}),
+		fyne.NewMenuItem("Restore Database", func() {
+			RestoreDatabase(w)
 		}),
 		fyne.NewMenuItemSeparator(),
 		fyne.NewMenuItem("Settings", func() {
@@ -55,6 +150,24 @@ func StartGUI() {
 		fyne.NewMenuItem("Rules Studio", func() {
 			// Switch to rules tab
 		}),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Manage Plugins", func() {
+			loaded := pluginManager.GetLoaded()
+			var msg string
+			if len(loaded) == 0 {
+				msg = fmt.Sprintf("No plugins loaded from:\n%s", pluginDir)
+			} else {
+				msg = "Loaded Plugins:\n\n"
+				for _, p := range loaded {
+					msg += fmt.Sprintf("- %s: %s\n", p.Name(), p.Description())
+				}
+			}
+			dialog.ShowInformation("Plugin Manager", msg, w)
+		}),
+		fyne.NewMenuItem("Toggle Theme", func() {
+			isDark = !isDark
+			a.Settings().SetTheme(NewAfterMailTheme(isDark))
+		}),
 	)
 
 	helpMenu := fyne.NewMenu("Help",
@@ -65,19 +178,32 @@ func StartGUI() {
 			// Show about dialog
 		}),
 	)
+	
+	langMenu := fyne.NewMenu("Language",
+		fyne.NewMenuItem("English", func() {
+			i18n.SetLanguage("en")
+			dialog.ShowInformation("Language Changed", "Language set to English. Restart application to apply full translations.", w)
+		}),
+		fyne.NewMenuItem("Español", func() {
+			i18n.SetLanguage("es")
+			dialog.ShowInformation("Idioma Cambiado", "Idioma establecido a Español. Reinicie la aplicación para aplicar las traducciones completas.", w)
+		}),
+	)
 
-	mainMenu := fyne.NewMainMenu(fileMenu, accountsMenu, toolsMenu, helpMenu)
+	mainMenu := fyne.NewMainMenu(fileMenu, accountsMenu, toolsMenu, helpMenu, langMenu)
 	w.SetMainMenu(mainMenu)
 
 	// Main content area with tabs
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Mail", buildMailView(w)),
-		container.NewTabItem("Composer", buildComposerTab()),
-		container.NewTabItem("Contacts", buildContactsTab()),
-		container.NewTabItem("Calendar", buildCalendarTab(w)),
+		container.NewTabItem("Composer", buildComposerTab(db)),
+		container.NewTabItem("Contacts", buildContactsTab(w, db)),
+		container.NewTabItem("Notes", buildNotesTab(w, db)),
+		container.NewTabItem("Calendar", buildCalendarTab(w, db)),
 		container.NewTabItem("Reminders", buildRemindersTab()),
-		container.NewTabItem("Tasks", buildTasksTab()),
+		container.NewTabItem("Tasks", buildTasksTab(db)),
 		container.NewTabItem("AfterSMTP/Web3", buildWeb3Tab(w)),
+		container.NewTabItem("Solidity Editor", SolidityEditorTab(w)),
 		container.NewTabItem("Rules", buildRulesTab()),
 		container.NewTabItem("Protocol Inspector", buildProtocolTab()),
 		container.NewTabItem("Security", buildSecurityTab()),
@@ -102,15 +228,18 @@ func buildSessionTab() fyne.CanvasObject {
 	sessionLog.Wrapping = fyne.TextWrapWord
 	
 	var currentSession *tlsconn.Session
+	var sessionMu sync.Mutex
 	var isConnected bool
-	
+
 	connectBtn := widget.NewButton("Connect", nil)
 connectBtn.OnTapped = func() {
 		if isConnected {
+			sessionMu.Lock()
 			if currentSession != nil {
 				currentSession.Close()
 				currentSession = nil
 			}
+			sessionMu.Unlock()
 			isConnected = false
 			connectBtn.SetText("Connect")
 			sessionLog.SetText(sessionLog.Text + "\n[System] Disconnected.\n")
@@ -124,14 +253,16 @@ connectBtn.OnTapped = func() {
 		}
 
 		sessionLog.SetText(sessionLog.Text + fmt.Sprintf("\n[System] Connecting to %s (TLS: %v)...\n", host, tlsCheck.Checked))
-		
+
 		session, err := tlsconn.Connect(host, tlsCheck.Checked, 10*time.Second)
 		if err != nil {
 			sessionLog.SetText(sessionLog.Text + fmt.Sprintf("[System] Connection failed: %v\n", err))
 			return
 		}
-		
+
+		sessionMu.Lock()
 		currentSession = session
+		sessionMu.Unlock()
 		isConnected = true
 		connectBtn.SetText("Disconnect")
 		sessionLog.SetText(sessionLog.Text + "[System] Connected!\n")
@@ -139,16 +270,22 @@ connectBtn.OnTapped = func() {
 		// Start a goroutine to read from the session
 		go func() {
 			for {
-				if currentSession == nil {
+				sessionMu.Lock()
+				session := currentSession
+				sessionMu.Unlock()
+
+				if session == nil {
 					break
 				}
-				line, err := currentSession.ReadLine()
+				line, err := session.ReadLine()
 				if err != nil {
 					// Connection closed or error
 					sessionLog.SetText(sessionLog.Text + fmt.Sprintf("\n[System] Connection lost: %v\n", err))
 					isConnected = false
 					connectBtn.SetText("Connect")
+					sessionMu.Lock()
 					currentSession = nil
+					sessionMu.Unlock()
 					break
 				}
 				sessionLog.SetText(sessionLog.Text + "< " + line)
@@ -160,17 +297,21 @@ connectBtn.OnTapped = func() {
 	commandEntry.SetPlaceHolder("Enter raw command (e.g. EHLO example.com)")
 	
 	sendBtn := widget.NewButton("Send", func() {
-		if !isConnected || currentSession == nil {
+		sessionMu.Lock()
+		session := currentSession
+		sessionMu.Unlock()
+
+		if !isConnected || session == nil {
 			sessionLog.SetText(sessionLog.Text + "\n[System] Error: Not connected.\n")
 			return
 		}
-		
+
 		cmd := commandEntry.Text
 		if cmd == "" {
 			return
 		}
 
-		err := currentSession.WriteLine(cmd)
+		err := session.WriteLine(cmd)
 		if err != nil {
 			sessionLog.SetText(sessionLog.Text + fmt.Sprintf("\n[System] Send error: %v\n", err))
 			return

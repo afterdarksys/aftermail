@@ -64,6 +64,15 @@ func ExecuteEngine(scriptSource string, msg *MessageContext) error {
 		return starlark.String(msg.SenderDID), nil
 	})
 
+	var autoReply = starlark.NewBuiltin("auto_reply", func(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		var replyText string
+		if err := starlark.UnpackArgs("auto_reply", args, kwargs, "text", &replyText); err != nil {
+			return nil, err
+		}
+		msg.Actions = append(msg.Actions, fmt.Sprintf("auto_reply:%s", replyText))
+		return starlark.None, nil
+	})
+
 	predeclared := starlark.StringDict{
 		"get_header":        getHeader,
 		"discard":           discard,
@@ -71,6 +80,7 @@ func ExecuteEngine(scriptSource string, msg *MessageContext) error {
 		"fileinto":          fileinto,
 		"regex_match":       regexMatch,
 		"get_recipient_did": getRecipientDID,
+		"auto_reply":        autoReply,
 	}
 
 	thread := &starlark.Thread{Name: "MailScriptEngine"}

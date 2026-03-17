@@ -177,9 +177,11 @@ func inspectAMFMessage(hexInput string) string {
 	}
 
 	output += "\nCRYPTOGRAPHY:\n"
-	output += fmt.Sprintf("  Encrypted Payload: %d bytes\n", len(ampMsg.EncryptedPayload))
+	output += fmt.Sprintf("  Payload Size: %d bytes\n", len(ampMsg.EncryptedPayload))
+	if len(ampMsg.Signatures) > 0 {
+		output += fmt.Sprintf("  Signatures: %d provided\n", len(ampMsg.Signatures))
+	}
 	output += fmt.Sprintf("  Ephemeral Public Key: %x\n", ampMsg.EphemeralPublicKey)
-	output += fmt.Sprintf("  Signature: %x\n", ampMsg.Signature)
 	if ampMsg.BlockchainProof != "" {
 		output += fmt.Sprintf("  Blockchain Proof: %s\n", ampMsg.BlockchainProof)
 	}

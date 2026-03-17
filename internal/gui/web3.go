@@ -35,6 +35,32 @@ func buildWalletSection(w fyne.Window) fyne.CanvasObject {
 	balanceLabel := widget.NewLabelWithStyle("0.000000 ETH", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	stakedLabel := widget.NewLabel("Staked: 0 ETH")
 
+	var currentWallet *wallet.EthereumWallet
+	var ethClient *wallet.MailblocksClient
+
+	// Public Sepolia RPC for testing Mailblocks contracts
+	const rpcURL = "https://ethereum-sepolia-rpc.publicnode.com"
+	// Replace with actual deployed contract address on Sepolia
+	const contractAddress = "0x0000000000000000000000000000000000000000"
+
+	// Helper to refresh balance
+	refreshBalance := func() {
+		if ethClient == nil {
+			return
+		}
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		bal, err := ethClient.GetBalance(ctx)
+		if err != nil {
+			balanceLabel.SetText("Error fetching balance")
+			return
+		}
+		
+		balanceLabel.SetText(wallet.FormatBalance(bal))
+	}
+
 	// Actions
 	createWalletBtn := widget.NewButton("Create New Wallet", func() {
 		dialog.ShowConfirm("Create Wallet", "This will generate a new Ethereum wallet. Make sure to backup the private key!", func(confirmed bool) {
@@ -48,8 +74,18 @@ func buildWalletSection(w fyne.Window) fyne.CanvasObject {
 				return
 			}
 
+			currentWallet = ethWallet
 			addressLabel.SetText(fmt.Sprintf("Address: %s", ethWallet.Address.Hex()))
-			balanceLabel.SetText("0.000000 ETH (new wallet)")
+			
+			// Initialize client
+			client, err := wallet.NewMailblocksClient(rpcURL, contractAddress, currentWallet)
+			if err == nil {
+				ethClient = client
+				balanceLabel.SetText("Syncing...")
+				go refreshBalance()
+			} else {
+				balanceLabel.SetText("0.000000 ETH (new wallet, RPC err)")
+			}
 
 			// Show private key backup dialog
 			pkHex := ethWallet.ExportPrivateKeyHex()
@@ -77,11 +113,20 @@ func buildWalletSection(w fyne.Window) fyne.CanvasObject {
 				return
 			}
 
+			currentWallet = ethWallet
 			addressLabel.SetText(fmt.Sprintf("Address: %s", ethWallet.Address.Hex()))
 
-			// Try to get balance
-			// TODO: Connect to Ethereum node and fetch balance
-			balanceLabel.SetText("?.?????? ETH (fetch balance)")
+			// Connect to Ethereum node
+			client, err := wallet.NewMailblocksClient(rpcURL, contractAddress, currentWallet)
+			if err != nil {
+				dialog.ShowError(fmt.Errorf("failed to connect to RPC: %w", err), w)
+				balanceLabel.SetText("RPC Error")
+				return
+			}
+			
+			ethClient = client
+			balanceLabel.SetText("Fetching balance...")
+			go refreshBalance()
 
 			dialog.ShowInformation("Success", "Wallet imported successfully!", w)
 		}, w)
@@ -92,11 +137,21 @@ func buildWalletSection(w fyne.Window) fyne.CanvasObject {
 	})
 
 	refreshBalanceBtn := widget.NewButton("Refresh Balance", func() {
-		dialog.ShowInformation("Refresh", "Connecting to Ethereum node...\n\nThis feature requires RPC configuration in settings.", w)
+		if ethClient == nil {
+			dialog.ShowInformation("Error", "No wallet loaded.", w)
+			return
+		}
+		balanceLabel.SetText("Syncing...")
+		go refreshBalance()
 	})
 
 	exportBtn := widget.NewButton("Export Private Key", func() {
-		dialog.ShowInformation("Export", "Private key export available after wallet is loaded", w)
+		if currentWallet == nil {
+			dialog.ShowInformation("Export", "Private key export available after wallet is loaded", w)
+			return
+		}
+		pkHex := currentWallet.ExportPrivateKeyHex()
+		dialog.ShowInformation("Export Private Key", fmt.Sprintf("Private Key:\n%s", pkHex), w)
 	})
 
 	// Wallet info card

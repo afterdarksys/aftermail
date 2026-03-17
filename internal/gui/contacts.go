@@ -1,121 +1,196 @@
 package gui
 
 import (
+	"fmt"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/afterdarksys/aftermail/pkg/storage"
 )
 
-type Contact struct {
-	Name      string
-	Email     string
-	DID       string // For AfterSMTP native DID
-	Phone     string
-	Company   string
-	IsStarred bool
+// ContactsTab manages the UI for the address book
+type ContactsTab struct {
+	db           *storage.DB
+	contacts     []storage.Contact
+	list         *widget.List
+	detailsPanel *fyne.Container
+	selectedID   int64
+	window       fyne.Window
 }
 
-// buildContactsTab creates the Address Book UI
-func buildContactsTab() fyne.CanvasObject {
-	// Dummy data for now
-	contacts := []Contact{
-		{"Alice Smith", "alice@example.com", "did:aftersmtp:msgs.global:alice", "555-0100", "Acme Corp", true},
-		{"Bob Jones", "bob@example.com", "", "555-0101", "Widgets Inc", false},
-		{"Charlie Brown", "charlie@example.com", "did:aftersmtp:msgs.global:cbrown", "555-0102", "Peanuts LLC", false},
+// buildContactsTab constructs the Fyne UI for managing contacts
+func buildContactsTab(window fyne.Window, db *storage.DB) fyne.CanvasObject {
+	tab := &ContactsTab{
+		db:     db,
+		window: window,
 	}
 
-	var list *widget.List
-	var selectedIndex int = -1
-
-	// List to display contacts
-	list = widget.NewList(
-		func() int {
-			return len(contacts)
-		},
+	tab.list = widget.NewList(
+		func() int { return len(tab.contacts) },
 		func() fyne.CanvasObject {
-			return widget.NewLabel("Template Name For Contact") // Template
+			return container.NewHBox(
+				widget.NewIcon(theme.AccountIcon()),
+				widget.NewLabel("Name placeholder..."),
+			)
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
-			o.(*widget.Label).SetText(contacts[i].Name)
+			c := tab.contacts[i]
+			box := o.(*fyne.Container)
+			label := box.Objects[1].(*widget.Label)
+			label.SetText(fmt.Sprintf("%s (%s)", c.Name, c.Email))
 		},
 	)
 
-	// Details pane
-	nameEntry := widget.NewEntry()
-	emailEntry := widget.NewEntry()
-	didEntry := widget.NewEntry()
-	phoneEntry := widget.NewEntry()
-	companyEntry := widget.NewEntry()
+	tab.list.OnSelected = func(id widget.ListItemID) {
+		tab.selectedID = tab.contacts[id].ID
+		tab.refreshDetailsBox(tab.contacts[id])
+	}
 
-	detailsForm := widget.NewForm(
-		widget.NewFormItem("Name", nameEntry),
-		widget.NewFormItem("Email", emailEntry),
-		widget.NewFormItem("AfterSMTP DID", didEntry),
-		widget.NewFormItem("Phone", phoneEntry),
-		widget.NewFormItem("Company", companyEntry),
+	tab.detailsPanel = container.NewVBox(
+		widget.NewLabelWithStyle("Select a contact to view details.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true}),
 	)
 
-	list.OnSelected = func(id widget.ListItemID) {
-		selectedIndex = int(id)
-		selected := contacts[id]
-		nameEntry.SetText(selected.Name)
-		emailEntry.SetText(selected.Email)
-		didEntry.SetText(selected.DID)
-		phoneEntry.SetText(selected.Phone)
-		companyEntry.SetText(selected.Company)
-	}
-
-	if len(contacts) > 0 {
-		list.Select(0)
-	}
-
-	searchEntry := widget.NewEntry()
-	searchEntry.SetPlaceHolder("Search contacts...")
-
-	filterToolbar := container.NewHBox(
-		searchEntry,
-		widget.NewButton("Add Contact", func() {
-			selectedIndex = -1
-			nameEntry.SetText("")
-			emailEntry.SetText("")
-			didEntry.SetText("")
-			phoneEntry.SetText("")
-			companyEntry.SetText("")
-			nameEntry.SetPlaceHolder("New Contact Name")
-			list.UnselectAll()
+	toolbar := widget.NewToolbar(
+		widget.NewToolbarAction(theme.ContentAddIcon(), func() {
+			tab.showAddContactDialog()
+		}),
+		widget.NewToolbarAction(theme.DeleteIcon(), func() {
+			if tab.selectedID > 0 {
+				tab.deleteSelectedContact()
+			}
+		}),
+		widget.NewToolbarSeparator(),
+		widget.NewToolbarAction(theme.ViewRefreshIcon(), func() {
+			tab.Reload()
 		}),
 	)
 
-	leftPane := container.NewBorder(filterToolbar, nil, nil, nil, list)
+	leftPanel := container.NewBorder(toolbar, nil, nil, nil, tab.list)
 	
-	saveBtn := widget.NewButton("Save Changes", func() {
-		contact := Contact{
-			Name:    nameEntry.Text,
-			Email:   emailEntry.Text,
-			DID:     didEntry.Text,
-			Phone:   phoneEntry.Text,
-			Company: companyEntry.Text,
-		}
+	split := container.NewHSplit(leftPanel, container.NewScroll(tab.detailsPanel))
+	split.Offset = 0.3
 
-		if selectedIndex >= 0 {
-			contacts[selectedIndex] = contact
-		} else {
-			contacts = append(contacts, contact)
-			selectedIndex = len(contacts) - 1
-		}
-		list.Refresh()
-		list.Select(widget.ListItemID(selectedIndex))
-	})
-	
-	rightPane := container.NewBorder(
-		widget.NewLabelWithStyle("Contact Details", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		saveBtn,
-		nil, nil,
-		detailsForm,
-	)
-
-	split := container.NewHSplit(leftPane, rightPane)
-	split.SetOffset(0.3) // Left side gets 30% of width
+	// Initial load
+	tab.Reload()
 
 	return split
+}
+
+// Reload pulls fresh contacts from the SQLite database
+func (t *ContactsTab) Reload() {
+	if t.db == nil {
+		return
+	}
+	contacts, err := t.db.ListContacts("")
+	if err == nil {
+		t.contacts = contacts
+		t.list.Refresh()
+		t.selectedID = 0
+		t.detailsPanel.Objects = []fyne.CanvasObject{
+			widget.NewLabelWithStyle("Select a contact to view details.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true}),
+		}
+		t.detailsPanel.Refresh()
+	}
+}
+
+// showAddContactDialog raises a form to insert a new address book entry
+func (t *ContactsTab) showAddContactDialog() {
+	nameEntry := AccessibleEntry("Full Name", "Contact's full name")
+	emailEntry := AccessibleEntry("Email Address", "Contact's primary email")
+	publicKeyEntry := AccessibleEntry("Public Key (Optional Web3)", "X25519/Ed25519 Key for AfterSMTP")
+	groupEntry := AccessibleEntry("Group Tag", "E.g., Family, Work, Crypto")
+	notesEntry := widget.NewMultiLineEntry()
+
+	items := []*widget.FormItem{
+		widget.NewFormItem("Name", nameEntry),
+		widget.NewFormItem("Email", emailEntry),
+		widget.NewFormItem("Public Key", publicKeyEntry),
+		widget.NewFormItem("Group", groupEntry),
+		widget.NewFormItem("Notes", notesEntry),
+	}
+
+	dialog.ShowForm("Add Contact", "Save", "Cancel", items, func(saved bool) {
+		if !saved {
+			return
+		}
+		if nameEntry.Text == "" || emailEntry.Text == "" {
+			dialog.ShowError(fmt.Errorf("name and email are required fields"), t.window)
+			return
+		}
+
+		newContact := &storage.Contact{
+			Name:      nameEntry.Text,
+			Email:     emailEntry.Text,
+			PublicKey: publicKeyEntry.Text,
+			GroupTag:  groupEntry.Text,
+			Notes:     notesEntry.Text,
+		}
+
+		_, err := t.db.AddContact(newContact)
+		if err != nil {
+			dialog.ShowError(err, t.window)
+			return
+		}
+		t.Reload()
+	}, t.window)
+}
+
+// deleteSelectedContact removes the actively highlighted contact
+func (t *ContactsTab) deleteSelectedContact() {
+	dialog.ShowConfirm("Delete Contact", "Are you sure you want to permanently delete this contact?", func(b bool) {
+		if b {
+			err := t.db.DeleteContact(t.selectedID)
+			if err != nil {
+				dialog.ShowError(err, t.window)
+				return
+			}
+			t.Reload()
+		}
+	}, t.window)
+}
+
+// refreshDetailsBox updates the right-hand panel with the selected contact's meta
+func (t *ContactsTab) refreshDetailsBox(c storage.Contact) {
+	nameTitle := widget.NewLabelWithStyle(c.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	emailLabel := widget.NewLabel(fmt.Sprintf("Email: %s", c.Email))
+	
+	pubKeyDisplay := "None"
+	if c.PublicKey != "" {
+		pubKeyDisplay = c.PublicKey
+	}
+	pubKeyLabel := widget.NewLabel(fmt.Sprintf("Public Key: %s", pubKeyDisplay))
+	
+	groupDisplay := "Ungrouped"
+	if c.GroupTag != "" {
+		groupDisplay = c.GroupTag
+	}
+	groupLabel := widget.NewLabel(fmt.Sprintf("Group: %s", groupDisplay))
+	
+	notesCard := widget.NewCard("Notes", "", widget.NewLabel(c.Notes))
+
+	// Bind composer hook
+	composeBtn := widget.NewButtonWithIcon("Compose Message", theme.MailSendIcon(), func() {
+		if composerToEntry != nil {
+			composerToEntry.SetText(c.Email)
+			if globalTabs != nil && composerTabItem != nil {
+				globalTabs.Select(composerTabItem)
+			}
+		}
+	})
+
+	t.detailsPanel.Objects = []fyne.CanvasObject{
+		nameTitle,
+		widget.NewSeparator(),
+		emailLabel,
+		pubKeyLabel,
+		groupLabel,
+		widget.NewSeparator(),
+		notesCard,
+		widget.NewSeparator(),
+		composeBtn,
+	}
+	t.detailsPanel.Refresh()
 }

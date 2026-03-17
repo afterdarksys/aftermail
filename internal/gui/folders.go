@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -338,9 +339,22 @@ func buildSearchBar(state *mailState) fyne.CanvasObject {
 	searchEntry.OnChanged = func(query string) {
 		if query == "" {
 			// Reset to all messages
+			state.messages = getMockMessages()
 			state.messageList.Refresh()
+			return
 		}
-		// TODO: Implement search filtering
+		
+		query = strings.ToLower(query)
+		filtered := []Message{}
+		for _, msg := range getMockMessages() {
+			if strings.Contains(strings.ToLower(msg.Subject), query) || 
+			   strings.Contains(strings.ToLower(msg.From), query) || 
+			   strings.Contains(strings.ToLower(msg.Body), query) {
+				filtered = append(filtered, msg)
+			}
+		}
+		state.messages = filtered
+		state.messageList.Refresh()
 	}
 
 	filterBtn := widget.NewButton("Filter", func() {
@@ -363,7 +377,19 @@ func buildFolderPane(state *mailState) fyne.CanvasObject {
 		[]string{"All Accounts", "work@company.com", "personal@gmail.com", "did:aftersmtp:msgs.global:ryan"},
 		func(s string) {
 			dialog.ShowInformation("Account Filter", fmt.Sprintf("Filtering messages for: %s", s), state.window)
-			// TODO: Actually filter messages by account
+			
+			if s == "All Accounts" {
+				state.messages = getMockMessages()
+			} else {
+				filtered := []Message{}
+				for _, msg := range getMockMessages() {
+					if msg.Account == s {
+						filtered = append(filtered, msg)
+					}
+				}
+				state.messages = filtered
+			}
+
 			if state.messageList != nil {
 				state.messageList.Refresh()
 			}
