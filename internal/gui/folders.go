@@ -31,6 +31,8 @@ type Message struct {
 	Attachments string
 	Category string
 	CategoryConfidence float64
+	IsVIP    bool
+	IsMuted  bool
 }
 
 // mailState holds the application state
@@ -120,6 +122,7 @@ Financial Director`,
 			Attachments: "Q4_Report.pdf (2.3 MB), Budget_Template.xlsx (156 KB)",
 			Category: "Work",
 			CategoryConfidence: 0.95,
+			IsVIP: true,
 		},
 		{
 			ID:      "2",
@@ -141,6 +144,7 @@ Keep up the great work!`,
 			Attachments: "",
 			Category: "Newsletters",
 			CategoryConfidence: 0.82,
+			IsMuted: true,
 		},
 		{
 			ID:      "3",
@@ -402,7 +406,9 @@ func buildFolderPane(state *mailState) fyne.CanvasObject {
 		func(id widget.TreeNodeID) []widget.TreeNodeID {
 			switch id {
 			case "":
-				return []widget.TreeNodeID{"favorites", "folders", "accounts"}
+				return []widget.TreeNodeID{"smart", "favorites", "folders", "accounts"}
+			case "smart":
+				return []widget.TreeNodeID{"smart-today", "smart-vips", "smart-muted", "smart-attachments"}
 			case "favorites":
 				return []widget.TreeNodeID{"fav-inbox", "fav-unread", "fav-starred", "fav-important"}
 			case "folders":
@@ -436,6 +442,11 @@ func buildFolderPane(state *mailState) fyne.CanvasObject {
 			badge := c.Objects[2].(*widget.Label)
 
 			folderNames := map[string]string{
+				"smart":            "⚙️ Smart Mailboxes",
+				"smart-today":      "📅 Today",
+				"smart-vips":       "👑 VIPs",
+				"smart-muted":      "🔕 Muted Threads",
+				"smart-attachments": "📎 Has Attachments",
 				"favorites":        "⭐ Favorites",
 				"folders":          "📁 Folders",
 				"accounts":         "👤 Accounts",
@@ -487,8 +498,40 @@ func buildFolderPane(state *mailState) fyne.CanvasObject {
 	)
 
 	// Open favorites and folders by default
+	folderTree.OpenBranch("smart")
 	folderTree.OpenBranch("favorites")
 	folderTree.OpenBranch("folders")
+
+	folderTree.OnSelected = func(id widget.TreeNodeID) {
+		filtered := []Message{}
+		for _, msg := range getMockMessages() {
+			include := false
+			switch id {
+			case "smart-today":
+				include = strings.Contains(msg.Date, "AM") || strings.Contains(msg.Date, "PM")
+			case "smart-vips":
+				include = msg.IsVIP
+			case "smart-muted":
+				include = msg.IsMuted
+			case "smart-attachments":
+				include = msg.Attachments != ""
+			case "fav-unread", "unread":
+				include = msg.Unread
+			case "fav-starred", "starred":
+				include = msg.Starred
+			default:
+				// Fallback to show all mock messages for standard folders just to show the UI works
+				include = true
+			}
+			if include {
+				filtered = append(filtered, msg)
+			}
+		}
+		state.messages = filtered
+		if state.messageList != nil {
+			state.messageList.Refresh()
+		}
+	}
 
 	folderHeader := widget.NewLabelWithStyle("Navigation", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
@@ -511,18 +554,22 @@ func buildMessageListPane(state *mailState) fyne.CanvasObject {
 			unreadIndicator.Resize(fyne.NewSize(8, 8))
 
 			starIcon := widget.NewLabel("⭐")
+			vipIcon := widget.NewLabel("👑")
 			fromLabel := widget.NewLabelWithStyle("Sender Name", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 			dateLabel := widget.NewLabel("Date")
 			subjectLabel := widget.NewLabelWithStyle("Subject", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 			previewLabel := widget.NewLabel("Preview text...")
+			mutedIcon := widget.NewLabel("🔕")
 			accountBadge := widget.NewLabel("Account")
 			categoryBadge := widget.NewLabel("Category")
 
 			topRow := container.NewHBox(
 				unreadIndicator,
 				starIcon,
+				vipIcon,
 				fromLabel,
 				layout.NewSpacer(),
+				mutedIcon,
 				categoryBadge,
 				accountBadge,
 				dateLabel,
@@ -546,10 +593,12 @@ func buildMessageListPane(state *mailState) fyne.CanvasObject {
 
 			unreadDot := topRow.Objects[0].(*canvas.Circle)
 			starIcon := topRow.Objects[1].(*widget.Label)
-			fromLabel := topRow.Objects[2].(*widget.Label)
-			categoryBadge := topRow.Objects[4].(*widget.Label)
-			accountBadge := topRow.Objects[5].(*widget.Label)
-			dateLabel := topRow.Objects[6].(*widget.Label)
+			vipIcon := topRow.Objects[2].(*widget.Label)
+			fromLabel := topRow.Objects[3].(*widget.Label)
+			mutedIcon := topRow.Objects[5].(*widget.Label)
+			categoryBadge := topRow.Objects[6].(*widget.Label)
+			accountBadge := topRow.Objects[7].(*widget.Label)
+			dateLabel := topRow.Objects[8].(*widget.Label)
 
 			subjectLabel := vbox.Objects[1].(*widget.Label)
 			previewLabel := vbox.Objects[2].(*widget.Label)
@@ -570,6 +619,20 @@ func buildMessageListPane(state *mailState) fyne.CanvasObject {
 				starIcon.SetText("⭐")
 			} else {
 				starIcon.SetText("☆")
+			}
+
+			if msg.IsVIP {
+				vipIcon.SetText("👑")
+				vipIcon.Show()
+			} else {
+				vipIcon.Hide()
+			}
+
+			if msg.IsMuted {
+				mutedIcon.SetText("🔕")
+				mutedIcon.Show()
+			} else {
+				mutedIcon.Hide()
 			}
 
 			// Update category badge with color coding
@@ -717,6 +780,9 @@ func updateMessageViewer(state *mailState, msg *Message) {
 	forwardBtn := widget.NewButton("Forward", func() {
 		dialog.ShowInformation("Forward", fmt.Sprintf("Forwarding: %s", msg.Subject), state.window)
 	})
+	muteBtn := widget.NewButton("Mute", func() {
+		dialog.ShowInformation("Mute Thread", "Thread muted", state.window)
+	})
 	archiveBtn := widget.NewButton("Archive", func() {
 		dialog.ShowInformation("Archive", "Message archived", state.window)
 	})
@@ -742,6 +808,7 @@ func updateMessageViewer(state *mailState, msg *Message) {
 		replyAllBtn,
 		forwardBtn,
 		layout.NewSpacer(),
+		muteBtn,
 		archiveBtn,
 		deleteBtn,
 	)

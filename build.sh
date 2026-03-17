@@ -152,6 +152,15 @@ dev() {
     success "Dev build complete"
 }
 
+# Debug build (with symbols for dlv)
+debug() {
+    info "Building AfterMail (debug mode with DWARF symbols)..."
+    ensure_build_dir
+    go build -gcflags="all=-N -l" -o "${BUILD_DIR}/aftermail" .
+    go build -gcflags="all=-N -l" -o "${BUILD_DIR}/aftermaild" ./cmd/aftermaild
+    success "Debug build complete"
+}
+
 # Release build (with optimizations)
 release() {
     info "Building AfterMail (release mode)..."
@@ -208,7 +217,14 @@ AfterMail Build Script
 Usage: $0 <command> [options]
 
 Commands:
-    build           Build all components (GUI + daemon)
+    build|all       Build all components (GUI + daemon)
+    gui-only        Build GUI application only
+    daemon-only     Build daemon only
+    debug           Build with debug symbols (for dlv)
+    clean           Remove build artifacts
+    install         Install binaries to system (default: /usr/local/bin)
+    
+    # Legacy / Additional targets
     build-gui       Build GUI application only
     build-cli       Build CLI-only version (headless)
     build-daemon    Build daemon only
@@ -247,20 +263,23 @@ main() {
 
     while [ $# -gt 0 ]; do
         case "$1" in
-            build)
+            build|all)
                 build_all
                 ;;
-            build-gui)
+            build-gui|gui-only)
                 build_gui
                 ;;
             build-cli)
                 build_cli
                 ;;
-            build-daemon)
+            build-daemon|daemon-only)
                 build_daemon
                 ;;
             dev)
                 dev
+                ;;
+            debug)
+                debug
                 ;;
             release)
                 release

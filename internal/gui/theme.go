@@ -33,45 +33,54 @@ var _ fyne.Theme = (*AfterMailTheme)(nil)
 
 // Color returns customized colors for our premium aesthetic, falling back to base theme.
 func (m *AfterMailTheme) Color(n fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
-	// Our core branding color (a sleek electric blue / indigo)
-	primaryColor := color.NRGBA{R: 0x4F, G: 0x46, B: 0xE5, A: 0xFF} // Indigo 600
+	// A sleek macOS-style accent blue
+	primaryColor := color.NRGBA{R: 0x00, G: 0x7A, B: 0xFF, A: 0xFF}
 
 	switch n {
 	case theme.ColorNamePrimary:
 		return primaryColor
 	case theme.ColorNameFocus:
-		// Slightly transparent primary color for focus rings
-		return color.NRGBA{R: 0x4F, G: 0x46, B: 0xE5, A: 0x80}
+		// Soft focus ring
+		return color.NRGBA{R: 0x00, G: 0x7A, B: 0xFF, A: 0x40}
 	case theme.ColorNameSelection:
-		// More transparent primary for list selections
+		// Sleek selection color
 		if m.isDark {
-			return color.NRGBA{R: 0x4F, G: 0x46, B: 0xE5, A: 0x40}
+			return color.NRGBA{R: 0x00, G: 0x55, B: 0xB3, A: 0x80}
 		}
-		return color.NRGBA{R: 0x4F, G: 0x46, B: 0xE5, A: 0x20}
+		return color.NRGBA{R: 0x00, G: 0x7A, B: 0xFF, A: 0x20}
 	case theme.ColorNameBackground:
 		if m.isDark {
-			// A richer, darker solid background instead of standard gray
-			return color.NRGBA{R: 0x11, G: 0x18, B: 0x27, A: 0xFF} // Gray 900
+			// Rich, macOS-style dark mode window background
+			return color.NRGBA{R: 0x1E, G: 0x1E, B: 0x1E, A: 0xFF}
 		}
-		// A softer off-white for light mode
-		return color.NRGBA{R: 0xF9, G: 0xFA, B: 0xFB, A: 0xFF} // Gray 50
+		// Clean macOS light mode window background
+		return color.NRGBA{R: 0xF5, G: 0xF5, B: 0xF7, A: 0xFF}
 	case theme.ColorNameButton:
 		if m.isDark {
-			return color.NRGBA{R: 0x1F, G: 0x29, B: 0x37, A: 0xFF} // Gray 800
+			return color.NRGBA{R: 0x33, G: 0x33, B: 0x36, A: 0xFF}
 		}
-		return color.NRGBA{R: 0xF3, G: 0xF4, B: 0xF6, A: 0xFF} // Gray 100
+		return color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF} // Clean white buttons
+	case theme.ColorNameInputBackground:
+		if m.isDark {
+			return color.NRGBA{R: 0x2A, G: 0x2A, B: 0x2C, A: 0xFF}
+		}
+		return color.NRGBA{R: 0xE8, G: 0xE8, B: 0xED, A: 0xFF}
+	case theme.ColorNameHover:
+		if m.isDark {
+			return color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x10}
+		}
+		return color.NRGBA{R: 0x00, G: 0x00, B: 0x00, A: 0x05}
 	case theme.ColorNameHyperlink:
-		// A brighter blue for links
-		return color.NRGBA{R: 0x3B, G: 0x82, B: 0xF6, A: 0xFF} // Blue 500
+		return primaryColor
 	case theme.ColorNameError:
-		// Vibrant red for errors
-		return color.NRGBA{R: 0xEF, G: 0x44, B: 0x44, A: 0xFF} // Red 500
+		return color.NRGBA{R: 0xFF, G: 0x3B, B: 0x30, A: 0xFF} // macOS Red
 	case theme.ColorNameSuccess:
-		// Clean green for success markers (like Verified DIDs)
-		return color.NRGBA{R: 0x10, G: 0xB9, B: 0x81, A: 0xFF} // Emerald 500
+		return color.NRGBA{R: 0x34, G: 0xC7, B: 0x59, A: 0xFF} // macOS Green
+	case theme.ColorNameWarning:
+		return color.NRGBA{R: 0xFF, G: 0x95, B: 0x00, A: 0xFF} // macOS Orange
 	}
 
-	// Fallback to the base theme (light or dark depending on variant)
+	// Fallback to the base theme
 	return m.baseTheme.Color(n, v)
 }
 
