@@ -119,22 +119,43 @@ func createSchema(db *sql.DB) error {
 
 	CREATE TABLE IF NOT EXISTS messages (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		message_id TEXT UNIQUE NOT NULL,
-		thread_id TEXT,
-		account_id TEXT NOT NULL,
-		folder TEXT NOT NULL,
+		account_id INTEGER NOT NULL,
+		remote_id TEXT,
+		folder_id INTEGER,
+		protocol TEXT,
+
 		sender TEXT NOT NULL,
+		recipients TEXT, -- JSON array
 		subject TEXT,
+		body_plain TEXT,
+		body_html TEXT,
+		raw_headers TEXT,
+
+		amf_payload BLOB,
+		received_at DATETIME NOT NULL,
+		flags TEXT, -- JSON array
+
+		sender_did TEXT,
+		signature TEXT,
+		verified BOOLEAN DEFAULT 0,
+		stake_amount REAL,
+		ipfs_cid TEXT,
+
+		-- Legacy compatibility fields
+		message_id TEXT UNIQUE,
+		thread_id TEXT,
 		snippet TEXT,
-		date DATETIME NOT NULL,
 		is_read BOOLEAN DEFAULT 0,
 		is_starred BOOLEAN DEFAULT 0,
 		has_attachments BOOLEAN DEFAULT 0,
-		labels TEXT, -- JSON array
+		labels TEXT,
 		raw_payload BLOB,
 		read_receipt_sent BOOLEAN DEFAULT 0,
 		is_phishing BOOLEAN DEFAULT 0,
-		is_spam BOOLEAN DEFAULT 0
+		is_spam BOOLEAN DEFAULT 0,
+
+		FOREIGN KEY(account_id) REFERENCES accounts(id),
+		FOREIGN KEY(folder_id) REFERENCES folders(id)
 	);
 
 	CREATE TABLE IF NOT EXISTS scheduled_messages (
@@ -158,9 +179,11 @@ func createSchema(db *sql.DB) error {
 		value TEXT NOT NULL
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_messages_folder ON messages(account_id, folder);
+	CREATE INDEX IF NOT EXISTS idx_messages_folder ON messages(account_id, folder_id);
 	CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
-	CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date DESC);
+	CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(received_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender);
+	CREATE INDEX IF NOT EXISTS idx_messages_remote_id ON messages(remote_id);
 
 	-- Global application settings
 	CREATE TABLE IF NOT EXISTS settings (
@@ -571,4 +594,23 @@ func (d *DB) GetFolderByName(name string) (int, error) {
 
 func (d *DB) Close() error {
 	return d.conn.Close()
+}
+
+// AccountExists checks if an account with the given ID exists
+func (d *DB) AccountExists(accountID int64) (bool, error) {
+	var count int
+	err := d.conn.QueryRow("SELECT COUNT(*) FROM accounts WHERE id = ?", accountID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// CreateLegacyAccount creates a basic account for legacy imports
+func (d *DB) CreateLegacyAccount(accountID int64, name, email string) error {
+	_, err := d.conn.Exec(`
+		INSERT INTO accounts (id, name, type, email, enabled, created_at)
+		VALUES (?, ?, 'legacy', ?, 1, datetime('now'))
+	`, accountID, name, email)
+	return err
 }
