@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AfterMail - Next-Generation Email Platform with MailScript</title>
+    <meta name="description" content="Professional email platform bridging traditional IMAP/SMTP with Web3 protocols. Includes standalone MailScript engine for advanced mail filtering.">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --accent: #38bdf8;
+            --accent-bright: #0ea5e9;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --success: #4ade80;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        header {
+            padding: 2rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .hero {
+            padding: 4rem 0;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 1.5rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 2rem 0;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-dark);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-bright);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(56, 189, 248, 0.3);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--accent);
+            border: 2px solid var(--accent);
+        }
+
+        .btn-secondary:hover {
+            background: var(--accent);
+            color: var(--bg-dark);
+        }
+
+        .features {
+            padding: 4rem 0;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            color: var(--accent);
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .feature-card p {
+            color: var(--text-muted);
+        }
+
+        .highlight-section {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(14, 165, 233, 0.1) 100%);
+            padding: 4rem 2rem;
+            border-radius: 16px;
+            margin: 4rem 0;
+            border: 1px solid var(--accent);
+        }
+
+        .highlight-section h2 {
+            color: var(--accent);
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .code-block {
+            background: var(--bg-dark);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .code-block code {
+            color: var(--success);
+        }
+
+        .use-cases {
+            padding: 4rem 0;
+        }
+
+        .use-case {
+            background: var(--bg-card);
+            padding: 2rem;
+            border-radius: 12px;
+            border-left: 4px solid var(--accent);
+            margin-bottom: 2rem;
+        }
+
+        .use-case h3 {
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+
+        footer {
+            padding: 3rem 0;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--accent);
+            color: var(--bg-dark);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            .subtitle {
+                font-size: 1.2rem;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">📧 AfterMail</div>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1>Next-Generation Email Platform</h1>
+                <p class="subtitle">Traditional IMAP/SMTP meets Web3 protocols with powerful MailScript filtering</p>
+
+                <div class="cta-buttons">
+                    <a href="https://github.com/afterdarksys/aftermail" class="btn btn-primary">Download AfterMail</a>
+                    <a href="#mailscript" class="btn btn-secondary">Explore MailScript</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="features">
+            <div class="container">
+                <h2 class="section-title">Complete Email Solution</h2>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📬</div>
+                        <h3>Traditional Email</h3>
+                        <p>Full support for IMAP, POP3, SMTP, Gmail, and Outlook with OAuth2 authentication</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🔐</div>
+                        <h3>Web3 Protocols</h3>
+                        <p>AfterSMTP with DID-based identity and Mailblocks with proof-of-stake spam prevention</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">📦</div>
+                        <h3>Legacy Import</h3>
+                        <p>Seamlessly migrate from Pine, Mutt, Thunderbird with mbox/maildir support</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🛡️</div>
+                        <h3>Security Testing</h3>
+                        <p>Comprehensive SPF, DKIM, DMARC, MTA-STS, BIMI, and ARC verification</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Protocol Debugging</h3>
+                        <p>Interactive SMTP/IMAP/POP3 grammar testing and compliance verification</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🎯</div>
+                        <h3>Smart Filtering</h3>
+                        <p>Powerful MailScript engine with Starlark-based rule processing</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="mailscript" class="highlight-section">
+            <div class="container">
+                <span class="badge">🆕 Now Available Standalone</span>
+                <h2>MailScript: Enterprise Mail Filtering for Everyone</h2>
+
+                <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem; font-size: 1.2rem;">
+                    Powerful Starlark-based email filtering engine that runs <strong>anywhere</strong>
+                </p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h3>🚀 Standalone Binary</h3>
+                        <p>Run MailScript independently without AfterMail. Perfect for servers, CI/CD pipelines, and custom integrations.</p>
+                        <div class="code-block">
+                            <code># Test mail filtering rules<br>
+mailscript test --script=filter.star<br><br>
+# Process mailboxes<br>
+mailscript process --mbox=inbox.mbox</code>
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3>🏢 Bring to Your Systems</h3>
+                        <p>Integrate AfterMail's enterprise-grade filtering technology into your own email infrastructure.</p>
+                        <div class="code-block">
+                            <code># JSON output for automation<br>
+mailscript process --json > results.json<br><br>
+# Live daemon integration<br>
+mailscript daemon monitor</code>
+                        </div>
+                    </div>
+
+                    <div class="feature-card">
+                        <h3>🧪 Offline Testing</h3>
+                        <p>Test and debug filtering rules before deploying to production. Interactive REPL for rapid development.</p>
+                        <div class="code-block">
+                            <code># Interactive development<br>
+mailscript repl --script=rules.star<br><br>
+# Process local mailboxes<br>
+mailscript process --maildir=~/Maildir</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="use-cases">
+            <div class="container">
+                <h2 class="section-title">MailScript Use Cases</h2>
+
+                <div class="use-case">
+                    <h3>🔧 Email Service Providers</h3>
+                    <p>Integrate MailScript into your email infrastructure for advanced spam filtering, content policy enforcement, and compliance rules. Process millions of messages with battle-tested Starlark engine.</p>
+                </div>
+
+                <div class="use-case">
+                    <h3>🏗️ DevOps & Testing</h3>
+                    <p>Validate mail filtering rules in CI/CD pipelines. Test against sample mailboxes before production deployment. JSON output integrates seamlessly with automation tools.</p>
+                </div>
+
+                <div class="use-case">
+                    <h3>📊 Security Research</h3>
+                    <p>Analyze spam patterns, phishing attempts, and malicious emails. Process archived mailboxes with custom detection rules. Export results for threat intelligence.</p>
+                </div>
+
+                <div class="use-case">
+                    <h3>🎓 Education & Training</h3>
+                    <p>Teach email security, spam filtering, and protocol analysis. Students can test rules offline, process sample datasets, and learn mail filtering without production risks.</p>
+                </div>
+
+                <div class="use-case">
+                    <h3>🔄 Mail Migration</h3>
+                    <p>Process and filter mailboxes during migrations. Apply custom rules to clean up legacy data. Compatible with mbox, maildir, and AfterMail formats.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="features" style="background: var(--bg-card); margin: 4rem 0; padding: 4rem 0; border-radius: 16px;">
+            <div class="container">
+                <h2 class="section-title">Getting Started</h2>
+
+                <div style="max-width: 800px; margin: 0 auto;">
+                    <h3 style="color: var(--accent); margin: 2rem 0 1rem;">Download AfterMail</h3>
+                    <div class="code-block">
+                        <code>git clone https://github.com/afterdarksys/aftermail.git<br>
+cd aftermail<br>
+go build -o aftermail .</code>
+                    </div>
+
+                    <h3 style="color: var(--accent); margin: 2rem 0 1rem;">Build MailScript Standalone</h3>
+                    <div class="code-block">
+                        <code>go build -o mailscript ./cmd/mailscript</code>
+                    </div>
+
+                    <h3 style="color: var(--accent); margin: 2rem 0 1rem;">Import Legacy Mailboxes</h3>
+                    <div class="code-block">
+                        <code># Import from Pine/Mutt<br>
+aftermail legacy --migrate=/var/mail/user --type=mbox<br><br>
+# Auto-scan common locations<br>
+aftermail legacy --auto-scan</code>
+                    </div>
+
+                    <h3 style="color: var(--accent); margin: 2rem 0 1rem;">Process with MailScript</h3>
+                    <div class="code-block">
+                        <code># Test your filtering rules<br>
+mailscript test --script=spam-filter.star<br><br>
+# Process a mailbox<br>
+mailscript process --script=filter.star --mbox=inbox.mbox -v</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 AfterMail. Open source email platform bridging traditional and Web3 protocols.</p>
+            <p style="margin-top: 1rem;">
+                <a href="https://github.com/afterdarksys/aftermail" style="color: var(--accent); text-decoration: none;">GitHub</a> •
+                <a href="https://github.com/afterdarksys/aftermail/blob/main/README.md" style="color: var(--accent); text-decoration: none;">Documentation</a>
+            </p>
+        </div>
+    </footer>
+</body>
+</html>
