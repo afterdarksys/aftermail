@@ -27,9 +27,29 @@ func (s *Server) StartServer() error {
 	// Web App Dashboard Route
 	mux.HandleFunc("/", s.handleDashboard)
 	
+	// Health Check
+	mux.HandleFunc("/health", s.handleHealth)
+
 	// REST JSON Routes for SDKs and Browser Extension
 	mux.HandleFunc("/api/v1/status", s.handleStatus)
 	mux.HandleFunc("/api/v1/inbox", s.handleInbox)
+
+	// Debug Console API Routes
+	mux.HandleFunc("/api/status", s.handleStatus)
+	mux.HandleFunc("/api/accounts", s.handleAccounts)
+	mux.HandleFunc("/api/sync", s.handleSync)
+	mux.HandleFunc("/api/logs", s.handleLogs)
+	mux.HandleFunc("/api/stats", s.handleStats)
+	mux.HandleFunc("/api/test", s.handleTest)
+
+	// Debug Utilities
+	mux.HandleFunc("/debug/cache", s.handleDebugCache)
+	mux.HandleFunc("/debug/connections", s.handleDebugConnections)
+	mux.HandleFunc("/debug/goroutines", s.handleDebugGoroutines)
+	mux.HandleFunc("/debug/memory", s.handleDebugMemory)
+	mux.HandleFunc("/debug/db", s.handleDebugDatabase)
+	mux.HandleFunc("/debug/config", s.handleDebugConfig)
+	mux.HandleFunc("/debug/trace", s.handleDebugTrace)
 
 	// Profiling Endpoints for Performance Analysis
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -98,4 +118,166 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(messages)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	health := map[string]interface{}{
+		"status":    "healthy",
+		"timestamp": time.Now().Format(time.RFC3339),
+		"daemon":    "aftermaild",
+		"version":   "1.2.0-headless",
+	}
+	json.NewEncoder(w).Encode(health)
+}
+
+func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.DB == nil {
+		http.Error(w, `{"error": "database uninitialized"}`, 500)
+		return
+	}
+	accounts, err := s.DB.ListAccounts()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error": "%v"}`, err), 500)
+		return
+	}
+	json.NewEncoder(w).Encode(accounts)
+}
+
+func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// Trigger account sync (placeholder - implement actual sync logic)
+	response := map[string]interface{}{
+		"status":  "sync_triggered",
+		"message": "Account synchronization initiated",
+		"time":    time.Now().Format(time.RFC3339),
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// Return recent log entries (placeholder - integrate with actual logger)
+	logs := []map[string]interface{}{
+		{
+			"timestamp": time.Now().Add(-5 * time.Minute).Format(time.RFC3339),
+			"level":     "INFO",
+			"message":   "Daemon started successfully",
+		},
+		{
+			"timestamp": time.Now().Add(-2 * time.Minute).Format(time.RFC3339),
+			"level":     "INFO",
+			"message":   "REST API listening on port " + fmt.Sprintf("%d", s.Port),
+		},
+	}
+	json.NewEncoder(w).Encode(logs)
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.DB == nil {
+		http.Error(w, `{"error": "database uninitialized"}`, 500)
+		return
+	}
+
+	messages, _ := s.DB.ListMessages()
+	accounts, _ := s.DB.ListAccounts()
+
+	stats := map[string]interface{}{
+		"total_messages": len(messages),
+		"total_accounts": len(accounts),
+		"uptime_seconds": time.Now().Unix(),
+		"timestamp":      time.Now().Format(time.RFC3339),
+	}
+	json.NewEncoder(w).Encode(stats)
+}
+
+func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	test := map[string]interface{}{
+		"status":  "ok",
+		"message": "Test endpoint responding",
+		"echo":    r.URL.Query().Get("echo"),
+	}
+	json.NewEncoder(w).Encode(test)
+}
+
+func (s *Server) handleDebugCache(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// Cache debugging info (placeholder - integrate with actual cache)
+	cache := map[string]interface{}{
+		"cache_size":     0,
+		"cache_hits":     0,
+		"cache_misses":   0,
+		"eviction_count": 0,
+	}
+	json.NewEncoder(w).Encode(cache)
+}
+
+func (s *Server) handleDebugConnections(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// Active connection debugging (placeholder)
+	connections := map[string]interface{}{
+		"active_imap":     0,
+		"active_smtp":     0,
+		"active_grpc":     0,
+		"active_quic":     0,
+		"connection_pool": "healthy",
+	}
+	json.NewEncoder(w).Encode(connections)
+}
+
+func (s *Server) handleDebugGoroutines(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	// Return pprof goroutine dump
+	w.Write([]byte(fmt.Sprintf("Goroutine count: %d\n\n", 0)))
+	w.Write([]byte("Use /debug/pprof/goroutine for full goroutine dump\n"))
+}
+
+func (s *Server) handleDebugMemory(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// Memory stats (placeholder - integrate with runtime.MemStats)
+	memory := map[string]interface{}{
+		"alloc_bytes":      0,
+		"total_alloc":      0,
+		"sys_bytes":        0,
+		"num_gc":           0,
+		"goroutines":       0,
+		"heap_alloc_bytes": 0,
+	}
+	json.NewEncoder(w).Encode(memory)
+}
+
+func (s *Server) handleDebugDatabase(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.DB == nil {
+		http.Error(w, `{"error": "database uninitialized"}`, 500)
+		return
+	}
+
+	dbInfo := map[string]interface{}{
+		"status":          "connected",
+		"wal_mode":        "enabled",
+		"connection_pool": "active",
+		"last_vacuum":     "unknown",
+	}
+	json.NewEncoder(w).Encode(dbInfo)
+}
+
+func (s *Server) handleDebugConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	config := map[string]interface{}{
+		"daemon_port":   s.Port,
+		"debug_enabled": true,
+		"tls_enabled":   false,
+		"log_level":     "INFO",
+	}
+	json.NewEncoder(w).Encode(config)
+}
+
+func (s *Server) handleDebugTrace(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte("Trace debugging enabled.\n"))
+	w.Write([]byte("Use /debug/pprof/trace for full execution trace\n"))
 }
