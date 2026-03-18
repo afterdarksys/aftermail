@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -124,4 +125,37 @@ MailScript offers parity with legacy Sieve while exposing AfterSMTP features.
 	top := widget.NewLabelWithStyle("Rules Studio", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	return container.NewBorder(top, saveBtn, nil, nil, split)
+}
+
+// ShowMailScriptPolicyDialog opens a dialog to configure MailScript execution policies.
+func ShowMailScriptPolicyDialog(w fyne.Window) {
+	// Simple JSON editor mock for MailScript policies
+	policyEditor := widget.NewMultiLineEntry()
+	policyEditor.SetText(`{
+  "execution_order": ["system", "user_defined"],
+  "execution_priority": "high",
+  "hard_fail": {
+    "action": "notify_me",
+    "halt": true
+  },
+  "soft_fail": {
+    "action": "log",
+    "halt": false
+  }
+}`)
+	policyEditor.Resize(fyne.NewSize(500, 300))
+
+	saveBtn := widget.NewButton("Save Policy", func() {
+		// Just a mock save for now
+		dialog.ShowInformation("MailScript Policy", "Policy Settings Saved Successfully", w)
+	})
+
+	content := container.NewBorder(
+		widget.NewLabelWithStyle("MailScript Engine Execution Policy (JSON)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		saveBtn,
+		nil, nil,
+		policyEditor,
+	)
+
+	dialog.ShowCustom("MailScript Policies", "Close", content, w)
 }

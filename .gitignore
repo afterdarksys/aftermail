@@ -3,3 +3,4 @@ aftermaild
 aftermail-cli
 *.db
 bin/
+.DS_Store

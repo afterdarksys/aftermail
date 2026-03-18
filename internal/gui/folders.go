@@ -340,8 +340,11 @@ func buildToolbar(state *mailState) fyne.CanvasObject {
 func buildSearchBar(state *mailState) fyne.CanvasObject {
 	searchEntry := widget.NewEntry()
 	searchEntry.SetPlaceHolder("Search mail (subject, sender, body...)")
-	searchEntry.OnChanged = func(query string) {
-		if query == "" {
+	
+	attachmentsOnlyCheck := widget.NewCheck("Attachments Only", nil)
+
+	performSearch := func(query string) {
+		if query == "" && !attachmentsOnlyCheck.Checked {
 			// Reset to all messages
 			state.messages = getMockMessages()
 			state.messageList.Refresh()
@@ -351,9 +354,19 @@ func buildSearchBar(state *mailState) fyne.CanvasObject {
 		query = strings.ToLower(query)
 		filtered := []Message{}
 		for _, msg := range getMockMessages() {
-			if strings.Contains(strings.ToLower(msg.Subject), query) || 
-			   strings.Contains(strings.ToLower(msg.From), query) || 
-			   strings.Contains(strings.ToLower(msg.Body), query) {
+			matchesQuery := true
+			if query != "" {
+				matchesQuery = strings.Contains(strings.ToLower(msg.Subject), query) || 
+			  				   strings.Contains(strings.ToLower(msg.From), query) || 
+			   				   strings.Contains(strings.ToLower(msg.Body), query)
+			}
+			
+			matchesAttachment := true
+			if attachmentsOnlyCheck.Checked {
+				matchesAttachment = msg.Attachments != ""
+			}
+			
+			if matchesQuery && matchesAttachment {
 				filtered = append(filtered, msg)
 			}
 		}
@@ -361,13 +374,52 @@ func buildSearchBar(state *mailState) fyne.CanvasObject {
 		state.messageList.Refresh()
 	}
 
-	filterBtn := widget.NewButton("Filter", func() {
-		dialog.ShowInformation("Filters", "Filter options:\n• Unread only\n• Starred\n• Has attachments\n• Date range\n• Account", state.window)
+	searchEntry.OnSubmitted = performSearch
+
+	searchBtn := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
+		performSearch(searchEntry.Text)
+	})
+
+	advancedBtn := widget.NewButton("Advanced Search", func() {
+		senderEntry := widget.NewEntry()
+		senderEntry.SetPlaceHolder("e.g. sarah.johnson@company.com")
+		
+		subjectEntry := widget.NewEntry()
+		subjectEntry.SetPlaceHolder("e.g. Budget")
+		
+		dateEntry := widget.NewEntry()
+		dateEntry.SetPlaceHolder("e.g. Yesterday, 10:32 AM")
+
+		advancedContent := container.NewVBox(
+			widget.NewLabel("Sender Contains:"), senderEntry,
+			widget.NewLabel("Subject Contains:"), subjectEntry,
+			widget.NewLabel("Date Contains:"), dateEntry,
+			attachmentsOnlyCheck,
+		)
+		
+		dialog.ShowCustomConfirm("Advanced Search", "Search", "Cancel", advancedContent, func(b bool) {
+			if b {
+				// Perform advanced search
+				filtered := []Message{}
+				for _, msg := range getMockMessages() {
+					matchSender := senderEntry.Text == "" || strings.Contains(strings.ToLower(msg.From), strings.ToLower(senderEntry.Text))
+					matchSubject := subjectEntry.Text == "" || strings.Contains(strings.ToLower(msg.Subject), strings.ToLower(subjectEntry.Text))
+					matchDate := dateEntry.Text == "" || strings.Contains(strings.ToLower(msg.Date), strings.ToLower(dateEntry.Text))
+					matchAttachment := !attachmentsOnlyCheck.Checked || msg.Attachments != ""
+					
+					if matchSender && matchSubject && matchDate && matchAttachment {
+						filtered = append(filtered, msg)
+					}
+				}
+				state.messages = filtered
+				state.messageList.Refresh()
+			}
+		}, state.window)
 	})
 
 	searchBar := container.NewBorder(
 		nil, nil,
-		nil, filterBtn,
+		nil, container.NewHBox(searchBtn, advancedBtn),
 		searchEntry,
 	)
 
@@ -533,7 +585,31 @@ func buildFolderPane(state *mailState) fyne.CanvasObject {
 		}
 	}
 
-	folderHeader := widget.NewLabelWithStyle("Navigation", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	newSmartBtn := widget.NewButton("New Smart Folder", func() {
+		// Dialog to create a new smart folder
+		entry := widget.NewEntry()
+		entry.SetPlaceHolder("e.g. Invoices")
+		criteria := widget.NewSelect([]string{"Subject Contains", "From Equals", "Has Attachment"}, nil)
+		val := widget.NewEntry()
+		val.SetPlaceHolder("Value to match")
+		
+		content := container.NewVBox(
+			widget.NewLabel("Folder Name:"), entry,
+			widget.NewLabel("Match Rule:"), criteria, val,
+		)
+		
+		dialog.ShowCustomConfirm("Create Smart Folder", "Create", "Cancel", content, func(b bool) {
+			if b && entry.Text != "" {
+				dialog.ShowInformation("Smart Folder Created", fmt.Sprintf("Smart Folder '%s' has been created.", entry.Text), state.window)
+			}
+		}, state.window)
+	})
+
+	folderHeader := container.NewHBox(
+		widget.NewLabelWithStyle("Navigation", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		layout.NewSpacer(),
+		newSmartBtn,
+	)
 
 	return container.NewBorder(
 		container.NewVBox(folderHeader, accountSelect, widget.NewSeparator()),

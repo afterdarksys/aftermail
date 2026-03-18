@@ -175,7 +175,8 @@ func StartGUI() {
 			// Open docs
 		}),
 		fyne.NewMenuItem("About ADS Mail", func() {
-			// Show about dialog
+			content := "Made with Love and Cats 😸\n\n(c) 2026 After Dark Systems, LLC.\n\nhttps://www.aftermail.app/\nsupport@afterdarksys.com"
+			dialog.ShowInformation("About Aftermail", content, w)
 		}),
 	)
 	
@@ -190,7 +191,44 @@ func StartGUI() {
 		}),
 	)
 
-	mainMenu := fyne.NewMainMenu(fileMenu, accountsMenu, toolsMenu, helpMenu, langMenu)
+	formatMenu := fyne.NewMenu("Format",
+		fyne.NewMenuItem("Lists", func() { dialog.ShowInformation("Format", "Lists feature coming soon", w) }),
+		fyne.NewMenuItem("Style", func() { dialog.ShowInformation("Format", "Style feature coming soon", w) }),
+		fyne.NewMenuItem("Alignment", func() { dialog.ShowInformation("Format", "Alignment feature coming soon", w) }),
+		fyne.NewMenuItem("Indentation", func() { dialog.ShowInformation("Format", "Indentation feature coming soon", w) }),
+	)
+
+	messageMenu := fyne.NewMenu("Message",
+		fyne.NewMenuItem("Flags (Colors)", func() { dialog.ShowInformation("Message", "Flags: Red, Orange, Yellow, Green, Blue, Purple, Gray", w) }),
+		fyne.NewMenuItem("Highlight Color", func() { dialog.ShowInformation("Message", "Highlight Color feature coming soon", w) }),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Request Read Receipt", func() { dialog.ShowInformation("Message", "Read Receipt requested", w) }),
+		fyne.NewMenuItem("Set Priority", func() { dialog.ShowInformation("Message", "Priority settings coming soon", w) }),
+		fyne.NewMenuItemSeparator(),
+		fyne.NewMenuItem("Tag as Junk", func() { dialog.ShowInformation("Message", "Message tagged as Junk", w) }),
+	)
+
+	mailboxMenu := fyne.NewMenu("Mailbox",
+		fyne.NewMenuItem("SMTP Settings", func() { dialog.ShowInformation("Mailbox", "SMTP Settings coming soon", w) }),
+		fyne.NewMenuItem("IMAP Settings", func() { dialog.ShowInformation("Mailbox", "IMAP Settings coming soon", w) }),
+		fyne.NewMenuItem("Cloud Mail Providers", func() { dialog.ShowInformation("Mailbox", "Cloud Mail Providers settings coming soon", w) }),
+	)
+
+	mailscriptMenu := fyne.NewMenu("MailScript",
+		fyne.NewMenuItem("Open Editor", func() {
+			tabs := w.Content().(*container.AppTabs)
+			for i, tab := range tabs.Items {
+				if tab.Text == "Rules" {
+					tabs.SelectIndex(i)
+					break
+				}
+			}
+		}),
+		fyne.NewMenuItem("Toggle Syntax Highlighting", func() { dialog.ShowInformation("MailScript", "Syntax Highlighting toggled", w) }),
+		fyne.NewMenuItem("Policy Settings", func() { ShowMailScriptPolicyDialog(w) }),
+	)
+
+	mainMenu := fyne.NewMainMenu(fileMenu, formatMenu, messageMenu, mailboxMenu, mailscriptMenu, accountsMenu, toolsMenu, helpMenu, langMenu)
 	w.SetMainMenu(mainMenu)
 
 	// Main content area with tabs
@@ -202,6 +240,7 @@ func StartGUI() {
 		container.NewTabItem("Calendar", buildCalendarTab(w, db)),
 		container.NewTabItem("Reminders", buildRemindersTab()),
 		container.NewTabItem("Tasks", buildTasksTab(db)),
+		container.NewTabItem("RSS", buildRSSTab(w)),
 		container.NewTabItem("AfterSMTP/Web3", buildWeb3Tab(w)),
 		container.NewTabItem("Solidity Editor", SolidityEditorTab(w)),
 		container.NewTabItem("Rules", buildRulesTab()),
