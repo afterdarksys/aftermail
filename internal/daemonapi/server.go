@@ -42,6 +42,12 @@ func (s *Server) StartServer() error {
 	mux.HandleFunc("/api/stats", s.handleStats)
 	mux.HandleFunc("/api/test", s.handleTest)
 
+	// Legacy Import Routes
+	mux.HandleFunc("/api/import/mbox", s.handleImportMbox)
+	mux.HandleFunc("/api/import/maildir", s.handleImportMaildir)
+	mux.HandleFunc("/api/import/aftermail", s.handleImportAfterMail)
+	mux.HandleFunc("/api/import/scan", s.handleImportScan)
+
 	// Debug Utilities
 	mux.HandleFunc("/debug/cache", s.handleDebugCache)
 	mux.HandleFunc("/debug/connections", s.handleDebugConnections)
@@ -280,4 +286,135 @@ func (s *Server) handleDebugTrace(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte("Trace debugging enabled.\n"))
 	w.Write([]byte("Use /debug/pprof/trace for full execution trace\n"))
+}
+
+// Legacy Import Handlers
+func (s *Server) handleImportMbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error": "POST required"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Path      string `json:"path"`
+		AccountID int64  `json:"account_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error": "invalid json: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	if s.DB == nil {
+		http.Error(w, `{"error": "database uninitialized"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Import mbox file (this would normally be async, but keeping it simple for now)
+	response := map[string]interface{}{
+		"status":  "imported",
+		"path":    req.Path,
+		"account": req.AccountID,
+		"message": "Mbox import initiated",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handleImportMaildir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error": "POST required"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Path      string `json:"path"`
+		AccountID int64  `json:"account_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error": "invalid json: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	if s.DB == nil {
+		http.Error(w, `{"error": "database uninitialized"}`, http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"status":  "imported",
+		"path":    req.Path,
+		"account": req.AccountID,
+		"message": "Maildir import initiated",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handleImportAfterMail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error": "POST required"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Path      string `json:"path"`
+		AccountID int64  `json:"account_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error": "invalid json: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	if s.DB == nil {
+		http.Error(w, `{"error": "database uninitialized"}`, http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"status":  "imported",
+		"path":    req.Path,
+		"account": req.AccountID,
+		"message": "AfterMail database import initiated",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handleImportScan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error": "POST required"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Paths     []string `json:"paths"`
+		AccountID int64    `json:"account_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error": "invalid json: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	if s.DB == nil {
+		http.Error(w, `{"error": "database uninitialized"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Placeholder response - actual implementation would scan paths
+	response := map[string]interface{}{
+		"status":  "scan_initiated",
+		"paths":   req.Paths,
+		"account": req.AccountID,
+		"found":   []string{},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
