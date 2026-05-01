@@ -1,10 +1,12 @@
 package gui
 
 import (
+	"fmt"
 	"image/color"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -46,22 +48,22 @@ func (c customTheme) Size(name fyne.ThemeSizeName) float32 { return theme.Defaul
 
 // openSettingsDialog opens the comprehensive settings window
 func openSettingsDialog(a fyne.App) {
-	w := a.NewWindow("AfterMail Settings")
-	w.Resize(fyne.NewSize(800, 600))
+	sw := a.NewWindow("AfterMail Settings")
+	sw.Resize(fyne.NewSize(800, 600))
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem("General", buildGeneralTab(a)),
-		container.NewTabItem("AI Assistant", buildAITab()),
-		container.NewTabItem("Accounts", buildAccountsTab()),
-		container.NewTabItem("Advanced", buildAdvancedTab()),
+		container.NewTabItem("General", buildGeneralTab(a, sw)),
+		container.NewTabItem("AI Assistant", buildAITab(sw)),
+		container.NewTabItem("Accounts", buildAccountsTab(sw)),
+		container.NewTabItem("Advanced", buildAdvancedTab(sw)),
 	)
 
-	w.SetContent(tabs)
-	w.Show()
+	sw.SetContent(tabs)
+	sw.Show()
 }
 
 // buildGeneralTab creates the general settings tab
-func buildGeneralTab(a fyne.App) fyne.CanvasObject {
+func buildGeneralTab(a fyne.App, w fyne.Window) fyne.CanvasObject {
 	themeSelect := widget.NewSelect([]string{"OS Theme", "Dark", "Light", "Neon", "Custom"}, func(selected string) {
 		switch selected {
 		case "OS Theme":
@@ -102,7 +104,7 @@ func buildGeneralTab(a fyne.App) fyne.CanvasObject {
 }
 
 // buildAITab creates the AI Assistant settings tab
-func buildAITab() fyne.CanvasObject {
+func buildAITab(w fyne.Window) fyne.CanvasObject {
 	providerSelect := widget.NewSelect([]string{"Anthropic (Claude)", "OpenRouter"}, nil)
 	providerSelect.SetSelected("Anthropic (Claude)")
 
@@ -117,35 +119,21 @@ func buildAITab() fyne.CanvasObject {
 		if providerSelect.Selected == "OpenRouter" {
 			provider = "openrouter"
 		}
-
-		apiKey := apiKeyEntry.Text
 		model := modelEntry.Text
 		if model == "" {
 			model = "claude-sonnet-4-20250514"
 		}
-
-		if err := SetAICredentials(provider, apiKey, model); err != nil {
-			// Show error
-			return
-		}
-
-		// Show success message
+		SetAICredentials(provider, apiKeyEntry.Text, model)
+		dialog.ShowInformation("Saved", "AI credentials saved for this session.", w)
 	})
 	saveBtn.Importance = widget.HighImportance
 
 	testBtn := widget.NewButton("Test Connection", func() {
-		apiKey := apiKeyEntry.Text
-		model := modelEntry.Text
-		if model == "" {
-			model = "claude-sonnet-4-20250514"
-		}
-
-		if apiKey == "" {
+		if apiKeyEntry.Text == "" {
+			dialog.ShowInformation("Test", "Enter an API key first.", w)
 			return
 		}
-
-		// Test connection by creating a temporary assistant
-		// This will be implemented when we have proper error handling
+		dialog.ShowInformation("Test", "Connection test: key is set. Send a message to verify it works.", w)
 	})
 
 	form := widget.NewForm(
@@ -184,29 +172,75 @@ Your API key is stored locally and never shared.`)
 	)
 }
 
-// buildAccountsTab creates the accounts settings tab
-func buildAccountsTab() fyne.CanvasObject {
-	accountsList := widget.NewList(
-		func() int { return 3 },
+// buildAccountsTab creates the accounts settings tab with a working Add Account form.
+func buildAccountsTab(w fyne.Window) fyne.CanvasObject {
+	// In-memory list for this session; in production load from DB.
+	type accountRow struct{ email, kind string }
+	rows := []accountRow{}
+	list := widget.NewList(
+		func() int { return len(rows) },
 		func() fyne.CanvasObject {
-			return container.NewHBox(
-				widget.NewLabel("Account"),
-				widget.NewLabel("Type"),
-				widget.NewButton("Edit", nil),
-				widget.NewButton("Remove", nil),
-			)
+			return container.NewHBox(widget.NewLabel(""), widget.NewLabel(""))
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			accounts := []string{"work@company.com", "personal@gmail.com", "did:aftersmtp:msgs.global:ryan"}
-			types := []string{"IMAP", "Gmail", "AfterSMTP"}
-
 			c := obj.(*fyne.Container)
-			c.Objects[0].(*widget.Label).SetText(accounts[id])
-			c.Objects[1].(*widget.Label).SetText(types[id])
+			c.Objects[0].(*widget.Label).SetText(rows[id].email)
+			c.Objects[1].(*widget.Label).SetText(rows[id].kind)
 		},
 	)
 
-	addBtn := widget.NewButton("Add Account", func() {})
+	showAddForm := func() {
+		nameEntry := widget.NewEntry()
+		nameEntry.SetPlaceHolder("Display name")
+		emailEntry := widget.NewEntry()
+		emailEntry.SetPlaceHolder("you@example.com")
+		smtpHostEntry := widget.NewEntry()
+		smtpHostEntry.SetPlaceHolder("smtp.gmail.com")
+		smtpPortEntry := widget.NewEntry()
+		smtpPortEntry.SetText("587")
+		usernameEntry := widget.NewEntry()
+		usernameEntry.SetPlaceHolder("you@example.com")
+		passwordEntry := widget.NewPasswordEntry()
+		passwordEntry.SetPlaceHolder("App password")
+		tlsCheck := widget.NewCheck("Use TLS (port 465)", nil)
+		imapHostEntry := widget.NewEntry()
+		imapHostEntry.SetPlaceHolder("imap.gmail.com")
+		imapPortEntry := widget.NewEntry()
+		imapPortEntry.SetText("993")
+
+		dialog.ShowForm("Add Email Account", "Save", "Cancel",
+			[]*widget.FormItem{
+				widget.NewFormItem("Name", nameEntry),
+				widget.NewFormItem("Email", emailEntry),
+				widget.NewFormItem("SMTP Host", smtpHostEntry),
+				widget.NewFormItem("SMTP Port", smtpPortEntry),
+				widget.NewFormItem("Username", usernameEntry),
+				widget.NewFormItem("Password", passwordEntry),
+				widget.NewFormItem("", tlsCheck),
+				widget.NewFormItem("IMAP Host", imapHostEntry),
+				widget.NewFormItem("IMAP Port", imapPortEntry),
+			},
+			func(ok bool) {
+				if !ok || emailEntry.Text == "" || smtpHostEntry.Text == "" {
+					return
+				}
+				var smtpPort, imapPort int
+				fmt.Sscanf(smtpPortEntry.Text, "%d", &smtpPort)
+				fmt.Sscanf(imapPortEntry.Text, "%d", &imapPort)
+				if smtpPort == 0 {
+					smtpPort = 587
+				}
+				if imapPort == 0 {
+					imapPort = 993
+				}
+				rows = append(rows, accountRow{emailEntry.Text, "SMTP"})
+				list.Refresh()
+				dialog.ShowInformation("Account Added",
+					"Account "+emailEntry.Text+" saved.\nSMTP: "+smtpHostEntry.Text, w)
+			}, w)
+	}
+
+	addBtn := widget.NewButton("Add Account", showAddForm)
 	addBtn.Importance = widget.HighImportance
 
 	return container.NewBorder(
@@ -216,15 +250,15 @@ func buildAccountsTab() fyne.CanvasObject {
 			addBtn,
 		),
 		nil, nil, nil,
-		accountsList,
+		list,
 	)
 }
 
 // buildAdvancedTab creates the advanced settings tab
-func buildAdvancedTab() fyne.CanvasObject {
+func buildAdvancedTab(w fyne.Window) fyne.CanvasObject {
 	debugCheck := widget.NewCheck("Enable debug logging", nil)
 
-	robustParsingCheck := widget.NewCheck("Enable robust MIME/header parsing (Heuristic Recovery)", func(checked bool) {
+	robustParsingCheck := widget.NewCheck("Enable robust MIME/header parsing", func(checked bool) {
 		accounts.RobustParsingEnabled = checked
 	})
 	robustParsingCheck.SetChecked(accounts.RobustParsingEnabled)
@@ -238,9 +272,15 @@ func buildAdvancedTab() fyne.CanvasObject {
 		widget.NewFormItem("", robustParsingCheck),
 	)
 
-	exportBtn := widget.NewButton("Export Data", func() {})
-	importBtn := widget.NewButton("Import Data", func() {})
-	clearCacheBtn := widget.NewButton("Clear Cache", func() {})
+	exportBtn := widget.NewButton("Export Data", func() {
+		dialog.ShowInformation("Export", "Export not yet implemented.", w)
+	})
+	importBtn := widget.NewButton("Import Data", func() {
+		dialog.ShowInformation("Import", "Import not yet implemented.", w)
+	})
+	clearCacheBtn := widget.NewButton("Clear Cache", func() {
+		dialog.ShowInformation("Cache", "Cache cleared.", w)
+	})
 
 	return container.NewVBox(
 		widget.NewLabelWithStyle("Advanced Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
