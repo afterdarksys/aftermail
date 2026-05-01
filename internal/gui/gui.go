@@ -235,6 +235,8 @@ func StartGUI() {
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Mail", buildMailView(w)),
 		container.NewTabItem("Composer", buildComposerTab(db)),
+		container.NewTabItem("Commitments", buildCommitmentsView(w, db)),
+		container.NewTabItem("Insights", buildInsightsView(w, db)),
 		container.NewTabItem("Contacts", buildContactsTab(w, db)),
 		container.NewTabItem("Notes", buildNotesTab(w, db)),
 		container.NewTabItem("Calendar", buildCalendarTab(w, db)),
