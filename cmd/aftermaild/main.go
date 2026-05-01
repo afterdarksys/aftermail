@@ -11,11 +11,17 @@ import (
 
 	"github.com/afterdarksys/aftermail/internal/daemonapi"
 	"github.com/afterdarksys/aftermail/pkg/accounts"
+	"github.com/afterdarksys/aftermail/pkg/mcp"
 	"github.com/afterdarksys/aftermail/pkg/rules"
 	"github.com/afterdarksys/aftermail/pkg/storage"
 )
 
 func main() {
+	// --mcp flag: run as a stdio MCP server instead of (or alongside) the REST API.
+	// Claude Desktop / Claude Code add this to their MCP config as:
+	//   {"command": "aftermaild", "args": ["--mcp"]}
+	mcpMode := len(os.Args) > 1 && os.Args[1] == "--mcp"
+
 	log.Println("Starting aftermaild - Background Mail Sync Service")
 
 	// Setup local database
@@ -24,6 +30,24 @@ func main() {
 		log.Fatalf("Failed to init database: %v", err)
 	}
 	defer db.Close()
+
+	if mcpMode {
+		// MCP stdio mode — expose all daemon tools to Claude / MCP clients.
+		// Logs go to stderr so they don't corrupt the JSON-RPC stream on stdout.
+		log.SetOutput(os.Stderr)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+		go func() { <-stop; cancel() }()
+
+		mcpServer := mcp.New(db, os.Stdin, os.Stdout)
+		if err := mcpServer.Run(ctx); err != nil && err != context.Canceled {
+			log.Fatalf("MCP server error: %v", err)
+		}
+		return
+	}
 
 	apiServer := &daemonapi.Server{
 		DB:   db,
